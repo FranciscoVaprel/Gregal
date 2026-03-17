@@ -16,6 +16,5 @@
     <Folder Include="Networking\" />
     <Folder Include="Utils\" />
     <Folder Include="Services\" />
-    <Folder Include="Parsing\" />
   </ItemGroup>
 </Project>

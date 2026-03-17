@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace TuProyecto.Models {
+namespace Gregal.Models {
     public class Historico {
         // --- CLAVE PRIMARIA COMPUESTA ---
         public int CodSala { get; set; }
