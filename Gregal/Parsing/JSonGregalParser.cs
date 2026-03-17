@@ -1,6 +1,5 @@
 ﻿using Gregal.Models;
 using System.Text.Json;
-using TuProyecto.Models;
 
 namespace Gregal.Parsing {
     public class JsonGregalParser : IParser {
