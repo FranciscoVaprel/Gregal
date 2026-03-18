@@ -1,39 +1,21 @@
-using Microsoft.Extensions.Options;
-using Gregal.Config;
-using Gregal.Parsing;
-using Gregal.Data;
+using Gregal.Networking;
 
-namespace Gregal {
+public class Worker : BackgroundService {
+    private readonly IGregalReceiver _receiver;
+    private readonly ILogger<Worker> _logger;
 
-    public class Worker : BackgroundService {
-        
-        private readonly ILogger<Worker> _logger;
-        private readonly GregalParserEngine _parser;
-        private readonly HistoricoRepository _repo;
-        private readonly IOptionsMonitor<GregalSettings> _settings;
-        
-        public Worker(
-            ILogger<Worker> logger,
-            GregalParserEngine parser,
-            HistoricoRepository repo,
-            IOptionsMonitor<GregalSettings> settings) {
-            _logger = logger;
-            _parser = parser;
-            _repo = repo;
-            _settings = settings;
-        }
+    public Worker(IGregalReceiver receiver, ILogger<Worker> logger) {
+        _receiver = receiver;
+        _logger = logger;
+    }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-            _logger.LogInformation(">>> Gregal ha arrancado correctamente.");
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
+        // No importa si es TCP o RS232, el worker solo dice "escucha"
+        await _receiver.ListenAsync(stoppingToken);
+    }
 
-            while (!stoppingToken.IsCancellationRequested) {
-                // Ejemplo de uso:
-                var puerto = _settings.CurrentValue.TcpPort;
-                _logger.LogInformation("Escuchando en el puerto: {p}", puerto);
-
-                // Esperamos 5 segundos antes de repetir el bucle
-                await Task.Delay(5000, stoppingToken);
-            }
-        }
+    public override Task StopAsync(CancellationToken cancellationToken) {
+        _receiver.Stop();
+        return base.StopAsync(cancellationToken);
     }
 }
