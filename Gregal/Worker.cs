@@ -1,21 +1,24 @@
 using Gregal.Networking;
 
-public class Worker : BackgroundService {
-    private readonly IGregalReceiver _receiver;
-    private readonly ILogger<Worker> _logger;
+namespace Gregal {
+    public class Worker : BackgroundService {
+        private readonly ILogger<Worker> _logger;
+        private readonly IGregalReceiver _receiver; // Interfaz común para TCP o RS232
 
-    public Worker(IGregalReceiver receiver, ILogger<Worker> logger) {
-        _receiver = receiver;
-        _logger = logger;
-    }
+        public Worker(ILogger<Worker> logger, IGregalReceiver receiver) {
+            _logger = logger;
+            _receiver = receiver;
+        }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-        // No importa si es TCP o RS232, el worker solo dice "escucha"
-        await _receiver.ListenAsync(stoppingToken);
-    }
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
+            _logger.LogInformation("Iniciando el receptor configurado...");
+            // Llama al método de la interfaz sin importarle si es TCP o Serial
+            await _receiver.ListenAsync(stoppingToken);
+        }
 
-    public override Task StopAsync(CancellationToken cancellationToken) {
-        _receiver.Stop();
-        return base.StopAsync(cancellationToken);
+        public override Task StopAsync(CancellationToken cancellationToken) {
+            _receiver.Stop();
+            return base.StopAsync(cancellationToken);
+        }
     }
 }

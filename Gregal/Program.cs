@@ -28,6 +28,12 @@ Log.Logger = new LoggerConfiguration()
 builder.Logging.ClearProviders();
 builder.Services.AddSerilog(); // Esto sustituye a UseSerilog() en este tipo de Builder
 
+builder.Services.AddSingleton<JsonGregalParser>();
+builder.Services.AddSingleton<CsvGregalParser>();
+builder.Services.AddSingleton<GregalParserEngine>();
+builder.Services.AddSingleton<HistoricoRepository>();
+builder.Services.AddHostedService<Worker>();
+
 var mode = builder.Configuration["NetworkSettings:Mode"];
 
 if (mode == "TCP") {
@@ -38,8 +44,7 @@ else if (mode == "RS232") {
     // Si dice RS232, el Worker recibirá la versión de puerto serie
     builder.Services.AddSingleton<IGregalReceiver, SerialGregalReceiver>();
 }
-builder.Services.AddSingleton<HistoricoRepository>();
-builder.Services.AddHostedService<Worker>();
+
 
 var host = builder.Build();
 host.Run();

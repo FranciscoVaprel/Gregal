@@ -1,12 +1,17 @@
-﻿using System;
-using System.Reflection;
+﻿using Gregal.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Gregal.Parsing {
     public class GregalParserEngine {
-        private readonly JsonGregalParser _jsonParser = new();
-        private readonly CsvGregalParser _csvParser = new();
+        private readonly IParser _jsonParser;
+        private readonly IParser _csvParser;
+        
+        public GregalParserEngine(JsonGregalParser jsonParser, CsvGregalParser csvParser) {
+            _jsonParser = jsonParser;
+            _csvParser = csvParser;
+        }
 
-        public Models.Historico ProcessRawData(string rawData) {
+        public Historico? ProcessRawData(string rawData) {
             if (string.IsNullOrWhiteSpace(rawData)) return null;
 
             string cleanData = rawData.Trim();
@@ -16,7 +21,6 @@ namespace Gregal.Parsing {
                 return _jsonParser.Parse(cleanData);
             }
             else {
-                // Si no empieza por llave, asumimos CSV
                 return _csvParser.Parse(cleanData);
             }
         }

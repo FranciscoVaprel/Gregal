@@ -48,16 +48,38 @@ namespace Gregal.Networking {
         private async Task HandleIncomingConnection(TcpClient client, CancellationToken ct) {
             try {
                 var remoteIp = ((IPEndPoint)client.Client.RemoteEndPoint!).Address.ToString();
+
                 if (!IsIpAuthorized(remoteIp)) {
-                    client.Close();
+                    _logger.LogWarning("Intento de conexión bloqueado: {ip}", remoteIp);
                     return;
                 }
 
-                // Aquí va tu lógica de lectura (StreamReader, etc.)
-                // y llamada al _parser y _repo
+                _logger.LogInformation("Cliente conectado: {ip}", remoteIp);
+                
+                using var stream = client.GetStream();
+                using var reader = new StreamReader(stream);
+
+                // El programa se quedará aquí esperando hasta que Hercules envíe algo
+                string? rawData = await reader.ReadLineAsync(ct);
+
+                if (!string.IsNullOrWhiteSpace(rawData)) {
+                    _logger.LogInformation("Datos recibidos de {ip}: {data}", remoteIp, rawData);
+
+                    // Aquí es donde el motor de parseo entra en juego
+                    var historico = _parser.ProcessRawData(rawData);
+
+                    if (historico != null) {
+                        _repo.Insertar(historico);
+                        _logger.LogInformation("Registro insertado en Firebird para Sala: {sala}", historico.COD_SALA);
+                    }
+                }
+            }
+            catch (Exception ex) {
+                _logger.LogError(ex, "Error procesando datos del cliente TCP");
             }
             finally {
                 client.Close();
+                _logger.LogInformation("Conexión cerrada.");
             }
         }
 
