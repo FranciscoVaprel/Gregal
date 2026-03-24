@@ -1,6 +1,6 @@
 ﻿using Gregal.Config;
 using Gregal.Data;
-
+using Gregal.Models;
 using Gregal.Parsing;
 using Microsoft.Extensions.Options;
 using System.Net;
@@ -36,9 +36,23 @@ namespace Gregal.Networking {
             while (!ct.IsCancellationRequested) {
                 try {
                     var client = await _server.AcceptTcpClientAsync(ct);
+                    /* _ = "discard" ¿Qué hace exactamente?
+                   ¿Qué hace exactamente?
+                    Le indica al compilador: "Ejecuta esta tarea en segundo plano, pero no te quedes esperando a que termine".
+                    Puntos clave para tu comentario:
+
+                    Fuego y Olvido (Fire & Forget): Lanza el proceso de atención al cliente y libera inmediatamente el bucle principal (while) para que pueda aceptar al siguiente cliente sin demora.
+
+                    Evita Advertencias: Sin el _ =, el compilador de C# te daría un aviso (Warning) diciendo que estás llamando a un método asíncrono sin usar await.
+
+                    Independencia: Permite que cada cliente tenga su propio "hilo" de ejecución lógico. Si un cliente tarda mucho en procesar sus datos, no bloquea la entrada de nuevos usuarios.*/
+
                     _ = HandleIncomingConnection(client, ct);
                 }
-                catch (OperationCanceledException) { break; }
+                catch (OperationCanceledException)
+                { 
+                    break;
+                }
                 catch (Exception ex) {
                     _logger.LogError(ex, "Error en receptor TCP");
                 }
@@ -46,40 +60,64 @@ namespace Gregal.Networking {
         }
 
         private async Task HandleIncomingConnection(TcpClient client, CancellationToken ct) {
+            string remoteIp = "Desconocida";
             try {
-                var remoteIp = ((IPEndPoint)client.Client.RemoteEndPoint!).Address.ToString();
-
-                if (!IsIpAuthorized(remoteIp)) {
-                    _logger.LogWarning("Intento de conexión bloqueado: {ip}", remoteIp);
-                    return;
-                }
-
+                remoteIp = ((IPEndPoint)client.Client.RemoteEndPoint!).Address.ToString();
                 _logger.LogInformation("Cliente conectado: {ip}", remoteIp);
-                
+
                 using var stream = client.GetStream();
                 using var reader = new StreamReader(stream);
 
-                // El programa se quedará aquí esperando hasta que Hercules envíe algo
-                string? rawData = await reader.ReadLineAsync(ct);
+                // Bucle de persistencia para mantener la conexión abierta
+                while (client.Connected && !ct.IsCancellationRequested) {
+                    string? rawData = await reader.ReadLineAsync(ct);
 
-                if (!string.IsNullOrWhiteSpace(rawData)) {
-                    _logger.LogInformation("Datos recibidos de {ip}: {data}", remoteIp, rawData);
+                    if (rawData == null) break; // Conexión cerrada por el cliente
 
-                    // Aquí es donde el motor de parseo entra en juego
-                    var historico = _parser.ProcessRawData(rawData);
-
-                    if (historico != null) {
-                        _repo.Insertar(historico);
-                        _logger.LogInformation("Registro insertado en Firebird para Sala: {sala}", historico.COD_SALA);
+                    if (!string.IsNullOrWhiteSpace(rawData)) {
+                        await ProcessMessageAsync(rawData, remoteIp);
                     }
                 }
             }
             catch (Exception ex) {
-                _logger.LogError(ex, "Error procesando datos del cliente TCP");
+                _logger.LogError(ex, "Error fatal en la sesión con el cliente {ip}", remoteIp);
             }
             finally {
                 client.Close();
-                _logger.LogInformation("Conexión cerrada.");
+                _logger.LogInformation("Conexión con {ip} finalizada.", remoteIp);
+            }
+        }
+
+        // Nuevo método: Se encarga exclusivamente de la lógica de procesamiento de la trama
+        private async Task ProcessMessageAsync(string rawData, string remoteIp) {
+            try {
+                _logger.LogInformation("Datos recibidos de {ip}: {data}", remoteIp, rawData);
+
+                // 1. Intentamos parsear la trama (CSV o JSON)
+                var historico = _parser.ProcessRawData(rawData);
+
+                if (historico != null) {
+                    // 2. Intentamos realizar la persistencia
+                    ExecuteDatabaseInsert(historico);
+                }
+            }
+            catch (Exception ex) {
+                // Capturamos errores de parseo o lógica para no romper el bucle de lectura
+                _logger.LogError("Error al procesar mensaje de {ip}: {msg}", remoteIp, ex.Message);
+            }
+        }
+
+        // Nuevo método: Encapsula la interacción con el repositorio y el manejo de sus errores
+        private void ExecuteDatabaseInsert(Historico historico) {
+            try {
+                _repo.Insertar(historico);
+                // Usamos el nombre de propiedad COD_SALA definido en tu modelo Historico.cs
+                _logger.LogInformation("Registro insertado con éxito en Firebird. Sala: {sala}", historico.COD_SALA);
+            }
+            catch (Exception ex) {
+                // Capturamos específicamente errores de la base de datos (como claves duplicadas)
+                _logger.LogError("Error de base de datos al insertar: {msg}", ex.Message);
+                // Aquí podrías lanzar una excepción personalizada si quisieras que ProcessMessageAsync hiciera algo más
             }
         }
 
