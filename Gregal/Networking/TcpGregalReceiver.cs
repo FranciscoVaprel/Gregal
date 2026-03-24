@@ -46,7 +46,6 @@ namespace Gregal.Networking {
                     Evita Advertencias: Sin el _ =, el compilador de C# te daría un aviso (Warning) diciendo que estás llamando a un método asíncrono sin usar await.
 
                     Independencia: Permite que cada cliente tenga su propio "hilo" de ejecución lógico. Si un cliente tarda mucho en procesar sus datos, no bloquea la entrada de nuevos usuarios.*/
-
                     _ = HandleIncomingConnection(client, ct);
                 }
                 catch (OperationCanceledException)
@@ -71,11 +70,15 @@ namespace Gregal.Networking {
                 // Bucle de persistencia para mantener la conexión abierta
                 while (client.Connected && !ct.IsCancellationRequested) {
                     string? rawData = await reader.ReadLineAsync(ct);
-
-                    if (rawData == null) break; // Conexión cerrada por el cliente
+                    if (rawData == null) break;
 
                     if (!string.IsNullOrWhiteSpace(rawData)) {
-                        await ProcessMessageAsync(rawData, remoteIp);
+                        // Obtenemos el resultado del procesamiento
+                        string response = await ProcessMessageAsync(rawData, remoteIp);
+
+                        // Enviamos la respuesta de vuelta al emisor (Hercules)
+                        byte[] responseData = System.Text.Encoding.UTF8.GetBytes(response + "\r\n");
+                        await stream.WriteAsync(responseData, 0, responseData.Length, ct);
                     }
                 }
             }
@@ -88,36 +91,30 @@ namespace Gregal.Networking {
             }
         }
 
-        // Nuevo método: Se encarga exclusivamente de la lógica de procesamiento de la trama
-        private async Task ProcessMessageAsync(string rawData, string remoteIp) {
+        // 2. Ajustamos ProcessMessageAsync para que retorne el estado
+        private async Task<string> ProcessMessageAsync(string rawData, string remoteIp) {
             try {
-                _logger.LogInformation("Datos recibidos de {ip}: {data}", remoteIp, rawData);
-
-                // 1. Intentamos parsear la trama (CSV o JSON)
                 var historico = _parser.ProcessRawData(rawData);
 
-                if (historico != null) {
-                    // 2. Intentamos realizar la persistencia
-                    ExecuteDatabaseInsert(historico);
-                }
+                if (historico == null) return GregalProtocol.ErrorParsing;
+
+                return ExecuteDatabaseInsert(historico);
             }
-            catch (Exception ex) {
-                // Capturamos errores de parseo o lógica para no romper el bucle de lectura
-                _logger.LogError("Error al procesar mensaje de {ip}: {msg}", remoteIp, ex.Message);
+            catch (Exception) {
+                return GregalProtocol.ErrorInternal;
             }
         }
 
-        // Nuevo método: Encapsula la interacción con el repositorio y el manejo de sus errores
-        private void ExecuteDatabaseInsert(Historico historico) {
+        // 3. Ajustamos ExecuteDatabaseInsert para detectar errores de BD
+        private string ExecuteDatabaseInsert(Historico historico) {
             try {
                 _repo.Insertar(historico);
-                // Usamos el nombre de propiedad COD_SALA definido en tu modelo Historico.cs
-                _logger.LogInformation("Registro insertado con éxito en Firebird. Sala: {sala}", historico.COD_SALA);
+                _logger.LogInformation("Registro insertado. Sala: {sala}", historico.COD_SALA);
+                return GregalProtocol.ErrorDatabase;
             }
             catch (Exception ex) {
-                // Capturamos específicamente errores de la base de datos (como claves duplicadas)
-                _logger.LogError("Error de base de datos al insertar: {msg}", ex.Message);
-                // Aquí podrías lanzar una excepción personalizada si quisieras que ProcessMessageAsync hiciera algo más
+                _logger.LogError("Error de BD: {msg}", ex.Message);
+                return GregalProtocol.ErrorDatabase;
             }
         }
 
