@@ -5,6 +5,7 @@ using Gregal.Networking;
 using Gregal.Parsing;
 using Serilog;
 
+// Lee appsettings.json, variables de entorno, etc.
 var builder = Host.CreateApplicationBuilder(args);
 
 // 1. Mapeo de las tres secciones de configuración

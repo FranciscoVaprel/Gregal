@@ -5,6 +5,7 @@ using Gregal.Parsing;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace Gregal.Networking {
     public class TcpGregalReceiver : IGregalReceiver {
@@ -62,62 +63,87 @@ namespace Gregal.Networking {
             string remoteIp = "Desconocida";
             try {
                 remoteIp = ((IPEndPoint)client.Client.RemoteEndPoint!).Address.ToString();
-                _logger.LogInformation("Cliente conectado: {ip}", remoteIp);
 
-                using var stream = client.GetStream();
-                using var reader = new StreamReader(stream);
-
-                // Bucle de persistencia para mantener la conexión abierta
-                while (client.Connected && !ct.IsCancellationRequested) {
-                    string? rawData = await reader.ReadLineAsync(ct);
-                    if (rawData == null) break;
-
-                    if (!string.IsNullOrWhiteSpace(rawData)) {
-                        // Obtenemos el resultado del procesamiento
-                        string response = await ProcessMessageAsync(rawData, remoteIp);
-
-                        // Enviamos la respuesta de vuelta al emisor (Hercules)
-                        byte[] responseData = System.Text.Encoding.UTF8.GetBytes(response + "\r\n");
-                        await stream.WriteAsync(responseData, 0, responseData.Length, ct);
-                    }
+                // REINTEGRACIÓN DE SEGURIDAD: Validamos la IP antes de hacer nada
+                if (!IsIpAuthorized(remoteIp)) {
+                    _logger.LogWarning("Intento de conexión bloqueado: {ip} no está autorizada.", remoteIp);
+                    return; // Cerramos la conexión inmediatamente
                 }
+
+                _logger.LogInformation("Cliente autorizado y conectado: {ip}", remoteIp);
+                await ReadStreamUntilClosed(client, remoteIp, ct);
             }
             catch (Exception ex) {
-                _logger.LogError(ex, "Error fatal en la sesión con el cliente {ip}", remoteIp);
+                _logger.LogError(ex, "Error crítico en sesión con {ip}", remoteIp);
             }
             finally {
                 client.Close();
-                _logger.LogInformation("Conexión con {ip} finalizada.", remoteIp);
+                _logger.LogInformation("Conexión con {ip} cerrada.", remoteIp);
             }
         }
 
-        // 2. Ajustamos ProcessMessageAsync para que retorne el estado
+        private async Task ReadStreamUntilClosed(TcpClient client, string remoteIp, CancellationToken ct) {
+            using var stream = client.GetStream();
+            byte[] buffer = new byte[4096];
+            string accumulator = string.Empty;
+
+            while (client.Connected && !ct.IsCancellationRequested) {
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, ct);
+                if (bytesRead == 0) break;
+
+                accumulator += System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+                if (accumulator.Length > 102400) {
+                    _logger.LogWarning("Buffer excedido para {ip}. Limpiando.", remoteIp);
+                    accumulator = string.Empty;
+                    continue;
+                }
+
+                accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp);
+            }
+        }
+      
+        private async Task<string> ExtractAndProcessMessages(string accumulator, NetworkStream stream, string remoteIp) {
+            while (accumulator.Contains(GregalProtocol.MessageDelimiter)) {
+                int index = accumulator.IndexOf(GregalProtocol.MessageDelimiter);
+                string fullMessage = accumulator.Substring(0, index).Trim();
+                accumulator = accumulator.Substring(index + 1);
+
+                if (!string.IsNullOrWhiteSpace(fullMessage)) {
+                    string response = await ProcessMessageAsync(fullMessage, remoteIp);
+                    byte[] responseBytes = GregalProtocol.ToBytes(response);
+                    await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                }
+            }
+            return accumulator;
+        }
+        
         private async Task<string> ProcessMessageAsync(string rawData, string remoteIp) {
+            string? currentMsgId = null;
             try {
+                using var doc = JsonDocument.Parse(rawData);
+                if (doc.RootElement.TryGetProperty("msg_id", out var idProp)) {
+                    currentMsgId = idProp.GetString();
+                }
+
                 var historico = _parser.ProcessRawData(rawData);
+                if (historico == null) {
+                    // Aquí se usa StatusError (parámetro status) y ErrParsing (parámetro detail)
+                    return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrParsing);
+                }
 
-                if (historico == null) return GregalProtocol.ErrorParsing;
-
-                return ExecuteDatabaseInsert(historico);
-            }
-            catch (Exception) {
-                return GregalProtocol.ErrorInternal;
-            }
-        }
-
-        // 3. Ajustamos ExecuteDatabaseInsert para detectar errores de BD
-        private string ExecuteDatabaseInsert(Historico historico) {
-            try {
                 _repo.Insertar(historico);
-                _logger.LogInformation("Registro insertado. Sala: {sala}", historico.COD_SALA);
-                return GregalProtocol.ErrorDatabase;
+
+                // Respuesta de éxito: usa StatusOk
+                return GregalProtocol.CreateResponse(GregalProtocol.StatusOk, currentMsgId);
             }
             catch (Exception ex) {
-                _logger.LogError("Error de BD: {msg}", ex.Message);
-                return GregalProtocol.ErrorDatabase;
+                _logger.LogError("Fallo en procesamiento/BD: {msg}", ex.Message);
+                // Respuesta de error de BD: usa StatusError y ErrDatabase
+                return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrDatabase);
             }
         }
-
+        
         private bool IsIpAuthorized(string ip) {
             var allowedIps = _network.CurrentValue.AllowedIps;
             return allowedIps == null || allowedIps.Count == 0 || allowedIps.Contains(ip);

@@ -1,17 +1,30 @@
-﻿namespace Gregal.Networking {
+﻿using System.Text.Json;
+
+namespace Gregal.Networking {
     public static class GregalProtocol {
-        // Respuestas del Servidor
-        public const string Success = "OK";
-        public const string ErrorParsing = "ERR_PARSING";
-        public const string ErrorDatabase = "ERR_DB";
-        public const string ErrorInternal = "ERR_INTERNAL";
+        public const char MessageDelimiter = '\0';
 
-        // Formatos y Delimitadores
-        public const string Terminator = "\r\n";
+        // Códigos de estado internos
+        public const string StatusOk = "SUCCESS";
+        public const string StatusError = "ERROR";
 
-        // Método de ayuda para formatear la respuesta
-        public static byte[] ToBytes(string message) {
-            return System.Text.Encoding.UTF8.GetBytes(message + Terminator);
+        // Tipos de error
+        public const string ErrParsing = "FORMAT_INVALID";
+        public const string ErrDatabase = "DATABASE_REJECTED";
+        public const string ErrInternal = "INTERNAL_SERVER_ERROR";
+
+        public static byte[] ToBytes(string json) =>
+            System.Text.Encoding.UTF8.GetBytes(json + MessageDelimiter);
+
+        public static string CreateResponse(string status, string? messageId, string? detail = null) {
+            var responseObj = new {
+                status = status,
+                msg_id = messageId ?? "unknown",
+                detail = detail,
+                timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+            };
+
+            return JsonSerializer.Serialize(responseObj);
         }
     }
 }

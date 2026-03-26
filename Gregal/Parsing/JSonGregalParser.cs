@@ -10,7 +10,7 @@ public class JsonGregalParser : IParser {
 
     private static readonly JsonSerializerOptions _options = new() {
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true // Esto permite leer 'codSala' como 'COD_SALA'
     };
 
     public JsonGregalParser(ILogger<JsonGregalParser> logger) {
@@ -20,24 +20,32 @@ public class JsonGregalParser : IParser {
     public Historico? Parse(string data) {
         if (string.IsNullOrWhiteSpace(data)) return null;
 
-        // Este bloque solo se compilará y ejecutará si estás en modo Debug
 #if DEBUG
-        _logger.LogInformation("DEBUG - Trama recibida para parsear: {data}", data);
+        _logger.LogInformation("DEBUG - Trama recibida: {data}", data);
 #endif
 
         try {
-            var resultado = JsonSerializer.Deserialize<Historico>(data, _options);
+            using var doc = JsonDocument.Parse(data);
+            var root = doc.RootElement;
+
+            // 1. Validar que existe el nodo "data" enviado por el Tester
+            if (!root.TryGetProperty("data", out var dataElement)) {
+                _logger.LogWarning("El JSON no contiene el nodo 'data'. Se aborta el parseo.");
+                return null;
+            }
+
+            // 2. Deserializar solo el contenido de "data"
+            var resultado = JsonSerializer.Deserialize<Historico>(dataElement.GetRawText(), _options);
 
 #if DEBUG
             if (resultado != null) {
-                _logger.LogInformation("DEBUG - Objeto deserializado: Sala {sala}, Venta {venta}",
-                    resultado.COD_SALA, resultado.VENTA);
+                _logger.LogInformation("DEBUG - Objeto mapeado con éxito: Sala {sala}", resultado.COD_SALA);
             }
 #endif
             return resultado;
         }
         catch (JsonException ex) {
-            _logger.LogError("Error al deserializar JSON: {msg}. Trama: {data}", ex.Message, data);
+            _logger.LogError("Error al deserializar: {msg}", ex.Message);
             return null;
         }
     }
