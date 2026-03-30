@@ -27,8 +27,10 @@ namespace Gregal.Networking {
         }
 
         public async Task ListenAsync(CancellationToken ct) {
-            var port = _network.CurrentValue.TcpPort;
-            var address = IPAddress.Parse(_network.CurrentValue.TcpAddress);
+            var settings = _network.CurrentValue; // Acceso a la config[cite: 2]
+            var port = settings.TcpPort;
+            var address = IPAddress.Parse(settings.TcpAddress);
+
             _server = new TcpListener(address, port);
             _server.Start();
 
@@ -37,21 +39,13 @@ namespace Gregal.Networking {
             while (!ct.IsCancellationRequested) {
                 try {
                     var client = await _server.AcceptTcpClientAsync(ct);
-                    /* _ = "discard" ¿Qué hace exactamente?
-                   ¿Qué hace exactamente?
-                    Le indica al compilador: "Ejecuta esta tarea en segundo plano, pero no te quedes esperando a que termine".
-                    Puntos clave para tu comentario:
 
-                    Fuego y Olvido (Fire & Forget): Lanza el proceso de atención al cliente y libera inmediatamente el bucle principal (while) para que pueda aceptar al siguiente cliente sin demora.
+                    // Aplicamos Keep-Alive usando los valores de la configuración[cite: 2]
+                    client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                    client.Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, settings.TcpKeepAliveTime);
+                    client.Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, settings.TcpKeepAliveInterval);
 
-                    Evita Advertencias: Sin el _ =, el compilador de C# te daría un aviso (Warning) diciendo que estás llamando a un método asíncrono sin usar await.
-
-                    Independencia: Permite que cada cliente tenga su propio "hilo" de ejecución lógico. Si un cliente tarda mucho en procesar sus datos, no bloquea la entrada de nuevos usuarios.*/
                     _ = HandleIncomingConnection(client, ct);
-                }
-                catch (OperationCanceledException)
-                { 
-                    break;
                 }
                 catch (Exception ex) {
                     _logger.LogError(ex, "Error en receptor TCP");
@@ -117,33 +111,41 @@ namespace Gregal.Networking {
             }
             return accumulator;
         }
-        
+
         private async Task<string> ProcessMessageAsync(string rawData, string remoteIp) {
             string? currentMsgId = null;
             try {
                 using var doc = JsonDocument.Parse(rawData);
-                if (doc.RootElement.TryGetProperty("msg_id", out var idProp)) {
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("msg_id", out var idProp)) {
                     currentMsgId = idProp.GetString();
                 }
 
+                // LÓGICA DE KEEPALIVE (PING/PONG)
+                if (root.TryGetProperty("operation", out var opProp) &&
+                    opProp.GetString()?.Equals("ping", StringComparison.OrdinalIgnoreCase) == true) {
+                    _logger.LogDebug("Keep-alive recibido de {ip}", remoteIp);
+
+                    // Usamos la constante oficial del protocolo
+                    return GregalProtocol.CreateResponse(GregalProtocol.StatusPong, currentMsgId);
+                }
+
+                // LÓGICA DE NEGOCIO
                 var historico = _parser.ProcessRawData(rawData);
                 if (historico == null) {
-                    // Aquí se usa StatusError (parámetro status) y ErrParsing (parámetro detail)
                     return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrParsing);
                 }
 
-                _repo.Insertar(historico);
-
-                // Respuesta de éxito: usa StatusOk
+                _repo.Guardar(historico);
                 return GregalProtocol.CreateResponse(GregalProtocol.StatusOk, currentMsgId);
             }
             catch (Exception ex) {
-                _logger.LogError("Fallo en procesamiento/BD: {msg}", ex.Message);
-                // Respuesta de error de BD: usa StatusError y ErrDatabase
+                _logger.LogError("Error en {ip}: {msg}", remoteIp, ex.Message);
                 return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrDatabase);
             }
         }
-        
+
         private bool IsIpAuthorized(string ip) {
             var allowedIps = _network.CurrentValue.AllowedIps;
             return allowedIps == null || allowedIps.Count == 0 || allowedIps.Contains(ip);

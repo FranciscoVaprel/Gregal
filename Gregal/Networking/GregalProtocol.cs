@@ -7,6 +7,7 @@ namespace Gregal.Networking {
         // Códigos de estado internos
         public const string StatusOk = "SUCCESS";
         public const string StatusError = "ERROR";
+        public const string StatusPong = "PONG";
 
         // Tipos de error
         public const string ErrParsing = "FORMAT_INVALID";
