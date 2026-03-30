@@ -12,4 +12,8 @@ public class NetworkSettings {
 
     public string ComPort { get; set; } = "COM1";
     public int BaudRate { get; set; } = 9600;
+    
+    public int TcpReadTimeoutMinutes { get; set; } = 5;
+    public int TcpMaxBufferChars { get; set; } = 102400;
+
 }

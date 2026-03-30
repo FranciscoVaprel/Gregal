@@ -78,25 +78,65 @@ namespace Gregal.Networking {
 
         private async Task ReadStreamUntilClosed(TcpClient client, string remoteIp, CancellationToken ct) {
             using var stream = client.GetStream();
+
+            // LEEMOS DE CONFIGURACIÓN
+            var settings = _network.CurrentValue;
+            stream.ReadTimeout = (int)TimeSpan.FromMinutes(settings.TcpReadTimeoutMinutes).TotalMilliseconds;
+
             byte[] buffer = new byte[4096];
             string accumulator = string.Empty;
 
-            while (client.Connected && !ct.IsCancellationRequested) {
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, ct);
-                if (bytesRead == 0) break;
+            try {
+                _logger.LogDebug("Sesión iniciada con {ip}. Timeout de lectura: {min} min.", remoteIp, settings.TcpReadTimeoutMinutes);
 
-                accumulator += System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                while (client.Connected && !ct.IsCancellationRequested) {
+                    // ReadAsync utilizará el CancellationToken para salir si el servidor se apaga
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, ct);
 
-                if (accumulator.Length > 102400) {
-                    _logger.LogWarning("Buffer excedido para {ip}. Limpiando.", remoteIp);
-                    accumulator = string.Empty;
-                    continue;
+                    if (bytesRead == 0) {
+                        _logger.LogInformation("El cliente {ip} ha finalizado la conexión de forma ordenada.", remoteIp);
+                        break;
+                    }
+
+                    accumulator += System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                    
+                    if (accumulator.Length > settings.TcpMaxBufferChars) {
+                        _logger.LogWarning("Inundación detectada en {ip}. Max: {max}. Actual: {len}",
+                            remoteIp, settings.TcpMaxBufferChars, accumulator.Length);
+
+                        // 1. Intentamos avisar al cliente antes de limpiar
+                        try {
+                            // Intentamos extraer un msg_id si es posible, si no, enviamos uno genérico
+                            string errorResponse = $"{{\"status\":\"{GregalProtocol.StatusError}\",\"detail\":\"{GregalProtocol.DetailBufferExceeded}\"}}\0";
+                            byte[] errorData = System.Text.Encoding.UTF8.GetBytes(errorResponse);
+                            await stream.WriteAsync(errorData, 0, errorData.Length, ct);
+                        }
+                        catch { /* Si el socket ya falló, no importa */ }
+
+                        // 2. Limpiamos y seguimos
+                        accumulator = string.Empty;
+                        continue;
+                    }
+
+                    accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp);
                 }
-
-                accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp);
+            }
+            catch (OperationCanceledException) {
+                _logger.LogInformation("Operación cancelada (Apagado del servidor) para {ip}.", remoteIp);
+            }
+            catch (IOException ex) when (ex.InnerException is SocketException sx &&
+                                       (sx.SocketErrorCode == SocketError.TimedOut || sx.SocketErrorCode == SocketError.ConnectionReset)) {
+                _logger.LogWarning("Conexión con {ip} cerrada por INACTIVIDAD ({min} min sin datos/ping) o fallo de red.", remoteIp, settings.TcpReadTimeoutMinutes);
+            }
+            catch (Exception ex) {
+                _logger.LogError(ex, "Error inesperado con {ip}", remoteIp);
+            }
+            finally {
+                client.Close();
+                _logger.LogInformation("Recursos liberados para la sesión de {ip}.", remoteIp);
             }
         }
-      
+
         private async Task<string> ExtractAndProcessMessages(string accumulator, NetworkStream stream, string remoteIp) {
             while (accumulator.Contains(GregalProtocol.MessageDelimiter)) {
                 int index = accumulator.IndexOf(GregalProtocol.MessageDelimiter);
@@ -125,7 +165,7 @@ namespace Gregal.Networking {
                 // LÓGICA DE KEEPALIVE (PING/PONG)
                 if (root.TryGetProperty("operation", out var opProp) &&
                     opProp.GetString()?.Equals("ping", StringComparison.OrdinalIgnoreCase) == true) {
-                    _logger.LogDebug("Keep-alive recibido de {ip}", remoteIp);
+                    _logger.LogInformation("PING recibido de {ip}", remoteIp);
 
                     // Usamos la constante oficial del protocolo
                     return GregalProtocol.CreateResponse(GregalProtocol.StatusPong, currentMsgId);

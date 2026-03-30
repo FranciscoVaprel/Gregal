@@ -12,7 +12,8 @@ namespace Gregal.Networking {
         // Tipos de error
         public const string ErrParsing = "FORMAT_INVALID";
         public const string ErrDatabase = "DATABASE_REJECTED";
-        public const string ErrInternal = "INTERNAL_SERVER_ERROR";
+        public const string ErrInternal = "INTERNAL_SERVER_ERROR";        
+        public const string DetailBufferExceeded = "BUFFER_EXCEEDED";
 
         public static byte[] ToBytes(string json) =>
             System.Text.Encoding.UTF8.GetBytes(json + MessageDelimiter);
