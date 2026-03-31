@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 
-namespace Gregal.Networking {
+namespace Gregal.Protocol {
     public static class GregalProtocol {
         public const char MessageDelimiter = '\0';
 

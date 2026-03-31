@@ -2,6 +2,7 @@
 using Gregal.Data;
 using Gregal.Models;
 using Gregal.Parsing;
+using Gregal.Protocol;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
@@ -11,9 +12,9 @@ namespace Gregal.Networking {
     public class TcpGregalReceiver : IGregalReceiver {
         private readonly ILogger<TcpGregalReceiver> _logger;
         private readonly IOptionsMonitor<NetworkSettings> _network;
-        private readonly GregalParserEngine _parser;
+        private readonly IParser _parser;
         private readonly HistoricoRepository _repo;
-        private TcpListener? _server;
+        private TcpListener? _server;        
 
         public TcpGregalReceiver(
             ILogger<TcpGregalReceiver> logger,
@@ -117,8 +118,8 @@ namespace Gregal.Networking {
                         accumulator = string.Empty;
                         continue;
                     }
-
-                    accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp);
+                    
+                    accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp, ct);
                 }
             }
             catch (OperationCanceledException) {
@@ -137,52 +138,80 @@ namespace Gregal.Networking {
             }
         }
 
-        private async Task<string> ExtractAndProcessMessages(string accumulator, NetworkStream stream, string remoteIp) {
-            while (accumulator.Contains(GregalProtocol.MessageDelimiter)) {
-                int index = accumulator.IndexOf(GregalProtocol.MessageDelimiter);
-                string fullMessage = accumulator.Substring(0, index).Trim();
+        private async Task<string> ExtractAndProcessMessages(string accumulator, NetworkStream stream, string remoteIp, CancellationToken ct) {
+            // Buscamos el delimitador \0 definido en el protocolo
+            while (accumulator.Contains('\0')) {
+                int index = accumulator.IndexOf('\0');
+                string rawMessage = accumulator.Substring(0, index).Trim();
                 accumulator = accumulator.Substring(index + 1);
 
-                if (!string.IsNullOrWhiteSpace(fullMessage)) {
-                    string response = await ProcessMessageAsync(fullMessage, remoteIp);
-                    byte[] responseBytes = GregalProtocol.ToBytes(response);
-                    await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                if (!string.IsNullOrWhiteSpace(rawMessage)) {
+                    // Procesamos el mensaje y obtenemos la respuesta JSON ya formateada
+                    string responseJson = await ProcessMessageAsync(rawMessage, remoteIp);
+
+                    // Enviamos la respuesta al cliente
+                    byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(responseJson);
+                    await stream.WriteAsync(responseBytes, 0, responseBytes.Length, ct);
                 }
             }
             return accumulator;
         }
 
         private async Task<string> ProcessMessageAsync(string rawData, string remoteIp) {
-            string? currentMsgId = null;
+            // 1. Primero, usamos JsonDocument para leer la "envoltura" sin romper nada
+            // Esto nos permite sacar el msg_id y la operación sea como sea el JSON
+            using var doc = JsonDocument.Parse(rawData);
+            var root = doc.RootElement;
+
+            // Extraemos el msg_id (si no existe, ponemos uno genérico)
+            string msgId = root.TryGetProperty("msg_id", out var idProp)
+                ? idProp.GetString() ?? "unknown"
+                : "unknown";
+
+            // Extraemos la operación
+            string operation = root.TryGetProperty("operation", out var opProp)
+                ? opProp.GetString()?.ToLower() ?? ""
+                : "";
+
             try {
-                using var doc = JsonDocument.Parse(rawData);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("msg_id", out var idProp)) {
-                    currentMsgId = idProp.GetString();
+                // 2. TRATAMIENTO DEL PING (Respuesta inmediata)
+                if (operation == "ping") {
+                    _logger.LogInformation("PING recibido de {ip}. Respondiendo PONG.", remoteIp);
+                    return GregalProtocolFactory.CreatePong(msgId);
                 }
 
-                // LÓGICA DE KEEPALIVE (PING/PONG)
-                if (root.TryGetProperty("operation", out var opProp) &&
-                    opProp.GetString()?.Equals("ping", StringComparison.OrdinalIgnoreCase) == true) {
-                    _logger.LogInformation("PING recibido de {ip}", remoteIp);
+                // 3. TRATAMIENTO DEL UPSERT (Aquí entra tu DTO y tu Parser)
+                if (operation == "upsert") {
+                    // Llamamos a TU motor (Aquí saltará tu punto de ruptura)
+                    // Le pasamos el rawData completo porque el Engine ya sabe buscar el nodo "data"
+                    var dto = _parser.Parse(rawData);
 
-                    // Usamos la constante oficial del protocolo
-                    return GregalProtocol.CreateResponse(GregalProtocol.StatusPong, currentMsgId);
+                    if (dto == null) {
+                        _logger.LogWarning("Operación UPSERT fallida: No se pudo parsear el contenido de 'data' para {ip}", remoteIp);
+                        return GregalProtocolFactory.CreateError("INVALID_DATA_FORMAT", msgId);
+                    }
+
+                    // 4. GUARDADO EN BASE DE DATOS
+                    bool guardadoOk = await _repo.SaveHistoricoAsync(dto);
+
+                    if (guardadoOk) {
+                        _logger.LogInformation("ÉXITO: Partida {p} de Sala {s} guardada/actualizada (IP: {ip})",
+                            dto.PartidaDia, dto.CodSala, remoteIp);
+                        return GregalProtocolFactory.CreateSuccess(msgId);
+                    }
+                    else {
+                        _logger.LogError("ERROR BBDD: El repositorio rechazó el guardado para {ip}", remoteIp);
+                        return GregalProtocolFactory.CreateError("DATABASE_INSERT_FAILED", msgId);
+                    }
                 }
 
-                // LÓGICA DE NEGOCIO
-                var historico = _parser.ProcessRawData(rawData);
-                if (historico == null) {
-                    return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrParsing);
-                }
-
-                _repo.Guardar(historico);
-                return GregalProtocol.CreateResponse(GregalProtocol.StatusOk, currentMsgId);
+                // 5. OPERACIÓN DESCONOCIDA
+                _logger.LogWarning("Operación no soportada '{op}' desde {ip}", operation, remoteIp);
+                return GregalProtocolFactory.CreateError("UNKNOWN_OPERATION", msgId);
             }
             catch (Exception ex) {
-                _logger.LogError("Error en {ip}: {msg}", remoteIp, ex.Message);
-                return GregalProtocol.CreateResponse(GregalProtocol.StatusError, currentMsgId, GregalProtocol.ErrDatabase);
+                _logger.LogError(ex, "Error crítico procesando mensaje de {ip}", remoteIp);
+                return GregalProtocolFactory.CreateError("INTERNAL_SERVER_ERROR", msgId);
             }
         }
 

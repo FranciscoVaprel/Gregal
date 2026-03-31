@@ -10,43 +10,47 @@ public class JsonGregalParser : IParser {
 
     private static readonly JsonSerializerOptions _options = new() {
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
-        PropertyNameCaseInsensitive = true // Esto permite leer 'codSala' como 'COD_SALA'
+        PropertyNameCaseInsensitive = true
     };
 
     public JsonGregalParser(ILogger<JsonGregalParser> logger) {
         _logger = logger;
     }
 
-    public Historico? Parse(string data) {
+    public HistoricoDTO? Parse(string data) {
         if (string.IsNullOrWhiteSpace(data)) return null;
 
 #if DEBUG
-        _logger.LogInformation("DEBUG - Trama recibida: {data}", data);
+        _logger.LogInformation("DEBUG - Trama JSON recibida: {data}", data);
 #endif
 
         try {
             using var doc = JsonDocument.Parse(data);
             var root = doc.RootElement;
 
-            // 1. Validar que existe el nodo "data" enviado por el Tester
-            if (!root.TryGetProperty("data", out var dataElement)) {
-                _logger.LogWarning("El JSON no contiene el nodo 'data'. Se aborta el parseo.");
-                return null;
+            // Intentamos extraer del nodo "data" si existe (común en el Tester)
+            if (root.TryGetProperty("data", out var dataElement)) {
+                var res = JsonSerializer.Deserialize<HistoricoDTO>(dataElement.GetRawText(), _options);
+                LogSuccess(res);
+                return res;
             }
 
-            // 2. Deserializar solo el contenido de "data"
-            var resultado = JsonSerializer.Deserialize<Historico>(dataElement.GetRawText(), _options);
-
-#if DEBUG
-            if (resultado != null) {
-                _logger.LogInformation("DEBUG - Objeto mapeado con éxito: Sala {sala}", resultado.COD_SALA);
-            }
-#endif
-            return resultado;
+            // Si no, parseamos la raíz
+            var directo = JsonSerializer.Deserialize<HistoricoDTO>(data, _options);
+            LogSuccess(directo);
+            return directo;
         }
         catch (JsonException ex) {
-            _logger.LogError("Error al deserializar: {msg}", ex.Message);
+            _logger.LogError("Error al deserializar JSON: {msg}. Trama: {data}", ex.Message, data);
             return null;
         }
+    }
+
+    private void LogSuccess(HistoricoDTO? dto) {
+#if DEBUG
+        if (dto != null) {
+            _logger.LogInformation("DEBUG - JSON mapeado: Sala {sala}, Partida {partida}", dto.CodSala, dto.PartidaDia);
+        }
+#endif
     }
 }
