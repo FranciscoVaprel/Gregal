@@ -20,6 +20,9 @@ public class HistoricoRepository {
     }   
 
     public async Task<bool> SaveHistoricoAsync(HistoricoDTO dto) {
+        // Log de nivel Debug: Solo lo verás si en el JSON pones "Default": "Debug"
+        _logger.LogDebug("Intentando guardar Partida {partida} de la Sala {sala}...", dto.PartidaDia, dto.CodSala);
+
         await _dbSemaphore.WaitAsync();
         try {
             using (FbConnection connection = new FbConnection(_dbSettings.CurrentValue.ConnectionString)) {
@@ -110,14 +113,39 @@ public class HistoricoRepository {
                                 cmd.Parameters.Add($"@PR{i}", valor);
                             }
 
-                            await cmd.ExecuteNonQueryAsync();
+                            _logger.LogDebug("Intentando guardar Partida {partida} de la Sala {sala}...", dto.CodSala, dto.PartidaDia);
+
+                            // --- Advertencia de Negocio: Validación de datos sospechosos ---
+                            if (dto.Precio <= 0) {
+                                _logger.LogWarning("! ADVERTENCIA: Partida recibida con PRECIO cero o negativo. Sala: {sala}", dto.CodSala);
+                            }
+
+                            if (dto.Premios == null || dto.Premios.All(p => p == 0)) {
+                                _logger.LogWarning("! ADVERTENCIA: La partida no contiene importes en los PREMIOS. Sala: {sala}, Partida: {partida}",
+                                    dto.CodSala, dto.PartidaDia);
+                            }
+
+                            // 1. Iniciamos el cronómetro justo antes de la ejecución
+                            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+                            await cmd.ExecuteNonQueryAsync(); // La operación que queremos medir
+
+                            // 2. Paramos el cronómetro
+                            watch.Stop();
+
                             trans.Commit();
+
+                            // 3. Logueamos el tiempo resultante
+                            _logger.LogInformation("V PARTIDA GUARDADA: Sala {sala}, Partida {partida} en {ms}ms",
+                                dto.CodSala, dto.PartidaDia, watch.ElapsedMilliseconds);
+
                             return true;
                         }
                     }
                     catch (Exception ex) {
                         trans.Rollback();
-                        _logger.LogError(ex, "Error al guardar HistoricoDTO");
+                        _logger.LogError(ex, "X Error al guardar Sala {sala}, Partida {partida}. Datos: {@dto}",
+                            dto.CodSala, dto.PartidaDia, dto);
                         return false;
                     }
                 }

@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 
 namespace Gregal.Parsing {
-    public class GregalParserEngine : IParser {
+    public class GregalParserEngine {
         private readonly IParser _jsonParser;
         private readonly IParser _csvParser;
 
@@ -12,26 +12,30 @@ namespace Gregal.Parsing {
         }
 
         // CAMBIO: Renombramos 'ProcessRawData' a 'Parse' para cumplir con la interfaz
-        public HistoricoDTO? Parse(string rawData) {
-            // 1. Limpieza inicial: Si no hay texto, no hay nada que hacer
-            if (string.IsNullOrWhiteSpace(rawData)) {
-                return null;
-            }
-
+        public ParseResult? Parse(string rawData) {
+            if (string.IsNullOrWhiteSpace(rawData)) return null;
             string cleanData = rawData.Trim();
 
-            // 2. ¿Es un JSON? (Empieza por llave)
-            if (cleanData.StartsWith("{")) {
-                // El flujo se desvía al especialista en JSON
-                return _jsonParser.Parse(cleanData);
+            var result = new ParseResult();
+
+            // 1. Detección de PING (Común para ambos)
+            if (cleanData.ToLower().Contains("\"operation\":\"ping\"") || cleanData.ToLower() == "ping") {
+                result.IsPing = true;
+                // Si es JSON, intentamos sacar el MsgId real
+                return result;
             }
 
-            // 3. ¿Es un CSV? (Si no es JSON y tiene comas o es texto plano)
-            // Aquí podrías añadir más lógica si fuera necesario, 
-            // pero por ahora el "else" es el CSV.
+            // 2. ¿Es un JSON?
+            if (cleanData.StartsWith("{")) {
+                result.Data = _jsonParser.Parse(cleanData);
+                // Aquí podrías extraer el MsgId del JSON si fuera necesario
+                return result;
+            }
+
+            // 3. ¿Es un CSV?
             if (!string.IsNullOrEmpty(cleanData)) {
-                // El flujo se desvía al especialista en CSV
-                return _csvParser.Parse(cleanData);
+                result.Data = _csvParser.Parse(cleanData); //
+                return result;
             }
 
             return null;

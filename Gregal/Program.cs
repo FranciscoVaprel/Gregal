@@ -17,9 +17,10 @@ builder.Services.Configure<DatabaseSettings>(builder.Configuration.GetSection("D
 var generalSettings = builder.Configuration.GetSection("GeneralSettings").Get<GeneralSettings>()
                       ?? new GeneralSettings();
 
-// 3. Configuración de Serilog
+// 3. Configuración de Serilog vinculada al appsettings.json
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .ReadFrom.Configuration(builder.Configuration) // <-- Esto lee "Logging:LogLevel"
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File(generalSettings.LogPath,
         rollingInterval: RollingInterval.Day,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
