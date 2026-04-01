@@ -7,7 +7,9 @@ using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Timers;
 using static Gregal.Protocol.GregalProtocol;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Gregal.Networking {
     public class TcpGregalReceiver : IGregalReceiver {
@@ -32,9 +34,23 @@ namespace Gregal.Networking {
             _parser = parser;
             _repo = repo;
         }
+        
+        /// <summary>        
+        ///    _server.Start(): El sistema operativo reserva el puerto(ej. 5000). A partir de aquí, el servidor es visible en la red.
 
+        ///    await _server.AcceptTcpClientAsync(ct): El código se detiene aquí.No consume CPU, simplemente espera. Cuando un cliente se conecta, se "despierta" y nos entrega un objeto client.
+
+
+        ///    SetSocketOption (KeepAlive): Activa los pulsos de mantenimiento.
+
+        ///    TcpKeepAliveTime: Define cuánto tiempo de silencio debe pasar antes de enviar el primer pulso (ej. 30 segundos).
+
+        /// TcpKeepAliveInterval: Si el primer pulso no tiene respuesta, define cada cuánto tiempo reintentar antes de dar la conexión por muerta.
+
+        /// _ = HandleIncomingConnection(...): Esto es fundamental.El símbolo _ = (discard)significa: "Inicia la gestión de este cliente en un hilo aparte y vuelve inmediatamente al while para aceptar al siguiente". Sin esto, tu servidor solo podría atender a una persona a la vez.
+        /// </summary> 
         public async Task ListenAsync(CancellationToken ct) {
-            var settings = _network.CurrentValue; // Acceso a la config[cite: 2]
+            var settings = _network.CurrentValue;
             var port = settings.TcpPort;
             var address = IPAddress.Parse(settings.TcpAddress);
 
@@ -114,7 +130,7 @@ namespace Gregal.Networking {
                         // 1. Intentamos avisar al cliente antes de limpiar
                         try {
                             // Intentamos extraer un msg_id si es posible, si no, enviamos uno genérico
-                            string errorResponse = GregalProtocolFactory.CreateError(ErrorCode.BufferExceeded, "unknown", "El mensaje excede el tamaño máximo");
+                            string errorResponse = GregalProtocolFactory.CreateError(ErrorCode.BUFFER_EXCEEDED, "unknown", "El mensaje excede el tamaño máximo");
                             byte[] errorData = System.Text.Encoding.UTF8.GetBytes(errorResponse);
                             await stream.WriteAsync(errorData, 0, errorData.Length, ct);
                         }
@@ -154,7 +170,9 @@ namespace Gregal.Networking {
                 if (!string.IsNullOrWhiteSpace(rawMessage)) {
                     // Procesamos el mensaje y obtenemos la respuesta JSON ya formateada
                     string responseJson = await ProcessMessageAsync(rawMessage, remoteIp);
-
+#if DEBUG
+                    _logger.LogDebug("ENVIANDO AL CLIENTE ({ip}): {data}", remoteIp, responseJson);
+#endif
                     // Enviamos la respuesta al cliente
                     byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(responseJson);
                     await stream.WriteAsync(responseBytes, 0, responseBytes.Length, ct);
@@ -173,7 +191,7 @@ namespace Gregal.Networking {
 
                 // ERROR CORREGIDO: Pasamos Enum y msgId por defecto
                 if (request == null)
-                    return GregalProtocolFactory.CreateError(ErrorCode.FormatInvalid, msgId);
+                    return GregalProtocolFactory.CreateError(ErrorCode.FORMAT_INVALID, msgId);
 
                 msgId = request.MsgId; // Ahora ya tenemos el ID real del cliente
 
@@ -186,23 +204,23 @@ namespace Gregal.Networking {
                 if (request.Operation?.ToLower() == "upsert") {
                     // ERROR CORREGIDO: Pasamos Enum y msgId
                     if (request.Data == null)
-                        return GregalProtocolFactory.CreateError(ErrorCode.FormatInvalid, msgId, "Nodo 'data' ausente o vacío");
+                        return GregalProtocolFactory.CreateError(ErrorCode.FORMAT_INVALID, msgId, "Nodo 'data' ausente o vacío");
 
                     bool ok = await _repo.SaveHistoricoAsync(request.Data);
 
                     // ERROR CORREGIDO: Pasamos Enum y msgId
                     return ok
                         ? GregalProtocolFactory.CreateSuccess(msgId)
-                        : GregalProtocolFactory.CreateError(ErrorCode.DatabaseRejected, msgId);
+                        : GregalProtocolFactory.CreateError(ErrorCode.DATABASE_REJECTED, msgId);
                 }
 
                 // ERROR CORREGIDO: Pasamos Enum y msgId
-                return GregalProtocolFactory.CreateError(ErrorCode.UnknownOperation, msgId);
+                return GregalProtocolFactory.CreateError(ErrorCode.UNKNOWN_OPERATION, msgId);
             }
             catch (Exception ex) {
                 _logger.LogError(ex, "Error con {ip}", remoteIp);
                 // ERROR CORREGIDO: Pasamos Enum y msgId
-                return GregalProtocolFactory.CreateError(ErrorCode.InternalServerError, msgId, ex.Message);
+                return GregalProtocolFactory.CreateError(ErrorCode.INTERNAL_SERVER_ERROR, msgId, ex.Message);
             }
         }
 

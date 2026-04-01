@@ -17,6 +17,6 @@ public class GregalResponse {
     [JsonPropertyName("detail")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Detail { get; set; }
-
+    [JsonPropertyName("timestamp")]
     public string Timestamp { get; set; } = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 }

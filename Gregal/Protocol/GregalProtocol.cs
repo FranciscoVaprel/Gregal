@@ -3,17 +3,17 @@
 namespace Gregal.Protocol {
     public static class GregalProtocol {
         public enum MessageStatus {
-            Success,
-            Error,
-            Pong
+            SUCCESS,
+            ERROR,
+            PONG
         }
 
         public enum ErrorCode {
-            FormatInvalid,
-            DatabaseRejected,
-            InternalServerError,
-            BufferExceeded,
-            UnknownOperation
+            FORMAT_INVALID,
+            DATABASE_REJECTED,
+            INTERNAL_SERVER_ERROR,
+            BUFFER_EXCEEDED,
+            UNKNOWN_OPERATION
         }
     }
 }

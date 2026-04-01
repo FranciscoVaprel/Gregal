@@ -1,0 +1,72 @@
+El problema fundamental: TCP es un flujo, no paquetes
+TCP no garantiza que lo que envías de una vez llegue de una vez. Si envías dos mensajes seguidos, pueden llegar fusionados en una sola lectura, o un mensaje puede llegar partido en dos lecturas. Esto es el problema del framing y es lo primero que hay que resolver.
+Las soluciones habituales son tres: usar un delimitador (como el \n que usas tú), prefixar cada mensaje con su longitud en bytes, o usar mensajes de tamaño fijo. El delimitador es simple pero obliga a escapar ese carácter si puede aparecer en los datos. El prefijo de longitud es más robusto pero añade complejidad. Los mensajes fijos son los más simples pero muy inflexibles.
+
+Qué incluir en el mensaje
+Más allá del payload en sí, un mensaje bien diseñado suele necesitar: un identificador de correlación (el msg_id que tienes) para emparejar peticiones y respuestas de forma asíncrona, una versión del protocolo para poder evolucionar sin romper clientes antiguos, y un campo de operación que indique qué hacer con los datos. Añadir un timestamp en el mensaje también es útil para auditoría y para detectar mensajes muy retrasados.
+
+Gestión de la conexión
+Hay que decidir si la conexión es de corta duración (una conexión por mensaje, más simple) o persistente (una conexión para muchos mensajes, más eficiente). Con conexiones persistentes aparecen nuevos problemas: ¿qué pasa si el otro extremo desaparece sin cerrar limpiamente? TCP no lo detecta solo de forma inmediata. Para eso sirve el heartbeat o keepalive: mensajes periódicos de ping que permiten detectar conexiones muertas.
+También hay que definir timeouts: cuánto tiempo esperas a que llegue un mensaje completo, cuánto tiempo toleras sin actividad antes de cerrar la conexión.
+
+Gestión de errores y reintentos
+El protocolo debe definir claramente qué ocurre en cada error posible: mensaje malformado, operación no reconocida, error en la base de datos, timeout. Lo más importante es que el servidor siempre responda algo, incluso ante un error, para que el cliente no se quede esperando indefinidamente.
+El cliente necesita saber si puede reintentar una operación de forma segura. Las operaciones idempotentes (como un UPSERT con los mismos datos) se pueden reintentar sin riesgo. Un INSERT puro podría duplicar datos. En tu caso el UPSERT es una buena decisión precisamente por esto.
+
+Seguridad
+Lo mínimo es la lista blanca de IPs que ya tienes. A partir de ahí, si los datos son sensibles, hay que plantearse TLS para cifrar el canal. También es importante limitar el tamaño máximo de mensaje para evitar ataques de agotamiento de memoria, y tener un límite de conexiones simultáneas por IP para prevenir floods.
+
+Serialización
+JSON es legible y flexible pero tiene coste de parseo y es verboso. Para volúmenes altos se usan formatos binarios como MessagePack o Protocol Buffers. Para tu caso JSON es perfectamente adecuado, pero hay que ser estricto con los tipos: fechas siempre en ISO 8601, números decimales como números (no strings), nulls explícitos en vez de campos ausentes si quieres diferencia entre "no enviado" y "borrar el valor".
+
+Orden y concurrencia
+Dentro de una conexión los mensajes llegan en orden. Pero si tienes varias conexiones simultáneas enviando mensajes sobre el mismo registro, pueden producirse condiciones de carrera en la base de datos. Hay que pensar si el protocolo necesita algún mecanismo de control de concurrencia, o si la base de datos lo gestiona sola (como hace Firebird con sus transacciones).
+
+Evolución del protocolo
+Un protocolo que no puede cambiar sin romper a todos los clientes es un problema. Las buenas prácticas son: incluir un campo de versión desde el principio, añadir campos nuevos como opcionales para mantener retrocompatibilidad, y nunca eliminar ni cambiar el tipo de un campo existente en una versión menor.
+
+En resumen, el orden de decisiones suele ser: framing ? serialización ? operaciones ? gestión de errores ? conexión y timeouts ? seguridad ? evolución. Si resuelves bien el framing y los errores, el resto es más manejable.
+
+
+
+1. El Keep-Alive de Red (Capa de Socket)
+
+Este evento lo dispara el Sistema Operativo. No verás un mensaje JSON, sino una Excepción en tu código de C#.
+
+    Evento: IOException o SocketException (Connection reset by peer).
+
+    Significado: El "cable" se ha cortado. El router ha caído, el cliente ha perdido el Wi-Fi o el proceso del cliente se ha cerrado repentinamente.
+
+    Reacción del Servidor:
+
+        Limpieza: Cerrar el NetworkStream y el TcpClient.
+
+        Log: Registrar que la sesión ha terminado por fallo de red.
+
+        Estado: Marcar la sala como "Desconectada" en tu monitor de salas (si tienes uno).
+
+2. El Ping-Pong (Capa de Aplicación)
+
+Aquí es donde controlamos la "salud" real del software.
+Escenario A: El cliente envía PING pero no recibe PONG
+
+    Significado: El servidor está tan colapsado procesando inserciones en Firebird que no llega a responder al Ping, o el hilo de red del servidor se ha bloqueado.
+
+    Reacción (en el Cliente): El cliente debe esperar un tiempo máximo (Timeout de 5-10s). Si no llega el PONG, debe cerrar la conexión y reintentar, asumiendo que la sesión actual está "zombi".
+
+Escenario B: El servidor deja de recibir PINGs (Timeout de 5 min)
+
+    Significado: El cliente sigue conectado (el socket está abierto), pero su lógica interna se ha quedado colgada o ha dejado de enviar datos.
+
+    Reacción (en el Servidor):
+
+        Gracias al stream.ReadTimeout que pusimos, el servidor lanzará una excepción.
+
+        Acción: Cortar la conexión por "Inactividad". No queremos miles de conexiones abiertas que no envían nada consumiendo RAM.
+
+Tabla de Decisiones (Matriz de Reacción)
+Si ocurre esto...	El culpable es...	La acción debe ser...
+Error de Socket inmediato	El Hardware / Red	Re-conectar (Cliente) / Liberar recursos (Servidor).
+Timeout de PONG (10s)	El Software del Servidor	Reintentar conexión tras una pausa (Backoff).
+Status: ERROR (Database)	La Lógica / SQL	NO reintentar el mismo JSON (está mal formado o viola una PK). Alertar al administrador.
+Status: SUCCESS	Todo OK	Seguir adelante.
