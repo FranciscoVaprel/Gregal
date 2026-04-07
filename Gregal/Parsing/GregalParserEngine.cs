@@ -16,29 +16,18 @@ namespace Gregal.Parsing {
             if (string.IsNullOrWhiteSpace(rawData)) return null;
             string cleanData = rawData.Trim();
 
-            var result = new ParseResult();
-
-            // 1. Detección de PING (Común para ambos)
+            // 1. Detección de PING
             if (cleanData.ToLower().Contains("\"operation\":\"ping\"") || cleanData.ToLower() == "ping") {
-                result.IsPing = true;
-                // Si es JSON, intentamos sacar el MsgId real
-                return result;
+                return new ParseResult { IsPing = true, MsgId = "ping" };
             }
 
             // 2. ¿Es un JSON?
             if (cleanData.StartsWith("{")) {
-                result.Data = _jsonParser.Parse(cleanData);
-                // Aquí podrías extraer el MsgId del JSON si fuera necesario
-                return result;
+                return _jsonParser.Parse(cleanData); // El JsonParser ahora devuelve el Result completo
             }
 
-            // 3. ¿Es un CSV?
-            if (!string.IsNullOrEmpty(cleanData)) {
-                result.Data = _csvParser.Parse(cleanData); //
-                return result;
-            }
-
-            return null;
+            // 3. ¿Es un CSV? (Cualquier otra cosa que no sea JSON y tenga contenido)
+            return _csvParser.Parse(cleanData); // El CsvParser ahora devuelve el Result completo
         }
     }
 }

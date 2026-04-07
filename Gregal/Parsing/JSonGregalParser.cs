@@ -17,28 +17,34 @@ public class JsonGregalParser : IParser {
         _logger = logger;
     }
 
-    public HistoricoDTO? Parse(string data) {
+    public ParseResult? Parse(string data) {
         if (string.IsNullOrWhiteSpace(data)) return null;
-
-#if DEBUG
-        _logger.LogInformation("DEBUG - Trama JSON recibida: {data}", data);
-#endif
 
         try {
             using var doc = JsonDocument.Parse(data);
             var root = doc.RootElement;
 
-            // Intentamos extraer del nodo "data" si existe (común en el Tester)
-            if (root.TryGetProperty("data", out var dataElement)) {
-                var res = JsonSerializer.Deserialize<HistoricoDTO>(dataElement.GetRawText(), _options);
-                LogSuccess(res);
-                return res;
+            var result = new ParseResult();
+
+            // 1. Extraemos el msg_id de la raíz del JSON (generado por el Tester)
+            if (root.TryGetProperty("msg_id", out var idProp)) {
+                result.MsgId = idProp.GetString() ?? "unknown";
             }
 
-            // Si no, parseamos la raíz
-            var directo = JsonSerializer.Deserialize<HistoricoDTO>(data, _options);
-            LogSuccess(directo);
-            return directo;
+            // 2. Intentamos extraer los datos del nodo "data" si existe
+            if (root.TryGetProperty("data", out var dataElement)) {
+                result.Data = JsonSerializer.Deserialize<HistoricoDTO>(dataElement.GetRawText(), _options);
+            }
+            else {
+                // Si no hay nodo "data", intentamos parsear la raíz directamente
+                result.Data = JsonSerializer.Deserialize<HistoricoDTO>(data, _options);
+            }
+
+            if (result.Data != null) {
+                LogSuccess(result.Data);
+            }
+
+            return result;
         }
         catch (JsonException ex) {
             _logger.LogError("Error al deserializar JSON: {msg}. Trama: {data}", ex.Message, data);

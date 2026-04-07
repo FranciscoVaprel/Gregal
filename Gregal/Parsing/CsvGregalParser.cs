@@ -11,41 +11,34 @@ public class CsvGregalParser : IParser {
         _logger = logger;
     }
 
-    public HistoricoDTO? Parse(string data) {
-        var cols = data.Trim().Split(';');
+    public ParseResult? Parse(string data) {
+        if (string.IsNullOrWhiteSpace(data)) return null;
 
-        // Validación mínima: Al menos Sala, Concesionario, Fecha y Partida
-        if (cols.Length < 4) {
-            _logger.LogWarning("X CSV incompleto: faltan columnas básicas. Datos: {data}", data);
-            return null;
-        }
+        // Ignorar cabeceras si el tester las envía por error
+        if (data.StartsWith("msg_id", StringComparison.OrdinalIgnoreCase) ||
+            data.StartsWith("codSala", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var cols = data.Trim().Split(';');
+        if (cols.Length < 5) return null;
 
         try {
-            // Usamos una variable auxiliar para validar cada número crítico
-            if (!int.TryParse(cols[0], out int codSala)) return LogFormatError("CodSala", cols[0]);
-            if (!int.TryParse(cols[1], out int codConc)) return LogFormatError("CodConc", cols[1]);
-            if (!int.TryParse(cols[3], out int partida)) return LogFormatError("PartidaDia", cols[3]);
-
-            var dto = new HistoricoDTO {
-                CodSala = codSala,
-                CodConc = codConc,
-                FechaSesion = cols[2], // La fecha se valida en el Repositorio/BBDD
-                PartidaDia = partida,
-                Venta = GetDecimal(cols, 4),
-                Caja = GetDecimal(cols, 5),
-                Bolas = cols.Length > 6 ? cols[6] : null
+            var result = new ParseResult {
+                MsgId = cols[0], // Extraemos el ID que viene del txtMsgId.Text del Tester
+                Data = new HistoricoDTO {
+                    CodSala = int.Parse(cols[1]),
+                    CodConc = int.Parse(cols[2]),
+                    FechaSesion = cols[3],
+                    PartidaDia = int.Parse(cols[4]),
+                    Precio = GetDecimal(cols, 14), // Índices alineados con CsvTramaTransmision
+                    Venta = GetDecimal(cols, 15),
+                    Caja = GetDecimal(cols, 16),
+                    Bolas = cols.Length > 44 ? cols[44] : null
+                }
             };
-
-            // Mapeo de premios con el ajuste de seguridad que comentamos
-            for (int i = 1; i <= 99; i++) {
-                int colIndex = 6 + i;
-                dto.Premios[i - 1] = (cols.Length > colIndex) ? GetDecimal(cols, colIndex) : 0m;
-            }
-
-            return dto;
+            return result;
         }
         catch (Exception ex) {
-            _logger.LogError(ex, "X ERROR crítico inesperado parseando CSV");
+            _logger.LogWarning("X ERROR PARSE CSV: {msg}", ex.Message);
             return null;
         }
     }
