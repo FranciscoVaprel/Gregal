@@ -1,7 +1,8 @@
 # Especificación Técnica: Protocolo de Comunicación "Gregal"
 
 ## 1. Introducción
-El proyecto **Gregal** es un servicio encargado de la recepción, procesamiento y almacenamiento de datos históricos de partidas. Esta documentación define el contrato de comunicación entre el sistema emisor (cliente) y el servicio Gregal (servidor).
+El proyecto **Gregal** es un servicio encargado de la recepción, procesamiento y almacenamiento de datos históricos de partidas. Esta documentación define el
+contrato de comunicación entre el sistema emisor (cliente) y el servicio Gregal (servidor).
 
 ---
 

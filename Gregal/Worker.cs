@@ -16,9 +16,9 @@ namespace Gregal {
             await _receiver.ListenAsync(stoppingToken);
         }
 
-        public override Task StopAsync(CancellationToken cancellationToken) {
+        public override async Task StopAsync(CancellationToken cancellationToken) {
             _receiver.Stop();
-            return base.StopAsync(cancellationToken);
+            await base.StopAsync(cancellationToken);
         }
     }
 }
