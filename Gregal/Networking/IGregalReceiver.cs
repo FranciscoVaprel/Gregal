@@ -1,6 +1,6 @@
 ﻿namespace Gregal.Networking {
     public interface IGregalReceiver {
-        Task ListenAsync(CancellationToken ct);
-        void Stop();
+        internal Task ListenAsync(CancellationToken ct);
+        internal void Stop();
     }
 }
