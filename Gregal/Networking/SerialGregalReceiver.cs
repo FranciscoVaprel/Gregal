@@ -31,7 +31,13 @@ namespace Gregal.Networking {
         private SerialPort _port;
         private string _accumulator = string.Empty;
 
-        // Canal SPSC: OnDataReceived escribe, ListenAsync lee
+        /* Canal SPSC: OnDataReceived escribe, ListenAsync lee
+        Un Channel<T> actúa como una tubería de alta velocidad altamente optimizada para pasar datos entre hilos de forma asíncrona.
+        Cómo funciona en tu código: El evento de hardware OnDataReceived corre en un hilo del pool de Windows; extrae la
+        trama, hace el corte con el delimitador y la "empuja" al canal con un método no bloqueante (TryWrite). En el otro extremo,
+        ProcessChannelAsync espera de forma puramente asíncrona (ReadAllAsync) a que caigan mensajes para procesarlos secuencialmente
+        e insertarlos en Firebird sin bloquear nada.
+        */
         private readonly Channel<string> _messageChannel =
             Channel.CreateUnbounded<string>(new UnboundedChannelOptions {
                 SingleReader = true,
@@ -98,9 +104,6 @@ namespace Gregal.Networking {
             _port = null;
         }
 
-        // ── Recepción: solo acumula y extrae mensajes al canal ────────
-        // Este método corre en el ThreadPool. No hace nada async.
-        // Solo extrae tramas completas y las mete en el canal.
         private void OnDataReceived(object sender, SerialDataReceivedEventArgs e) {
             if (_port == null || !_port.IsOpen) return;
             try {
@@ -108,31 +111,37 @@ namespace Gregal.Networking {
                 if (string.IsNullOrEmpty(incoming)) return;
 
                 _logger.LogDebug("Bytes recibidos serie ({len} chars).", incoming.Length);
-
                 _accumulator += incoming;
 
-                if (_accumulator.Length > _network.CurrentValue.TcpMaxBufferChars) {
-                    _logger.LogWarning("Buffer serie excedido ({len} chars). Limpiando.", _accumulator.Length);
-                    TryWriteResponse(GregalProtocolFactory.CreateError(
-                        ErrorCode.BUFFER_EXCEEDED, "unknown", "Buffer excedido"));
-                    _accumulator = string.Empty;
-                    return;
-                }
+                if (BufferExcedido()) return;
 
-                // Extraer mensajes completos y enviarlos al canal
-                while (_accumulator.Contains(Delimiter)) {
-                    int idx = _accumulator.IndexOf(Delimiter);
-                    string rawMessage = _accumulator[..idx].Trim();
-                    _accumulator = _accumulator[(idx + 1)..];
-
-                    if (!string.IsNullOrWhiteSpace(rawMessage)) {
-                        _logger.LogDebug("Trama completa extraída: {msg}", rawMessage);
-                        _messageChannel.Writer.TryWrite(rawMessage);
-                    }
-                }
+                ExtractAndEnqueueMessages();
             }
             catch (Exception ex) {
                 _logger.LogError(ex, "Error leyendo del puerto serie.");
+            }
+        }
+
+        private bool BufferExcedido() {
+            if (_accumulator.Length <= _network.CurrentValue.TcpMaxBufferChars) return false;
+
+            _logger.LogWarning("Buffer serie excedido ({len} chars). Limpiando.", _accumulator.Length);
+            TryWriteResponse(GregalProtocolFactory.CreateError(
+                ErrorCode.BUFFER_EXCEEDED, "unknown", "Buffer excedido"));
+            _accumulator = string.Empty;
+            return true;
+        }
+
+        private void ExtractAndEnqueueMessages() {
+            while (_accumulator.Contains(Delimiter)) {
+                int idx = _accumulator.IndexOf(Delimiter);
+                string rawMessage = _accumulator[..idx].Trim();
+                _accumulator = _accumulator[(idx + 1)..];
+
+                if (string.IsNullOrWhiteSpace(rawMessage)) continue;
+
+                _logger.LogDebug("Trama completa extraída: {msg}", rawMessage);
+                _messageChannel.Writer.TryWrite(rawMessage);
             }
         }
 

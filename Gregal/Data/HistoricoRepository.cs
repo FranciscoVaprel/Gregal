@@ -11,13 +11,13 @@ public class HistoricoRepository {
     private readonly ILogger<HistoricoRepository> _logger;
     /*
      Como en tu HistoricoRepository estás usando métodos asíncronos (async/await), no podemos usar un lock normal (ya que el lock de C# no se lleva bien con await). En su lugar, usaremos un SemaphoreSlim, que es el "hermano moderno" del Monitor diseñado específicamente para tareas asíncronas.
-     */
+    */
     private static readonly SemaphoreSlim _dbSemaphore = new SemaphoreSlim(1, 1);
 
     public HistoricoRepository(IOptionsMonitor<DatabaseSettings> dbSettings, ILogger<HistoricoRepository> logger) {
         _dbSettings = dbSettings;
         _logger = logger;
-    }   
+    }
 
     public async Task<bool> SaveHistoricoAsync(HistoricoDTO dto) {
         // Log de nivel Debug: Solo lo verás si en el JSON pones "Default": "Debug"

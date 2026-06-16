@@ -1,8 +1,6 @@
 ﻿using Gregal.Config;
 using Gregal.Data;
-using Gregal.Models;
 using Gregal.Parsing;
-using Gregal.Protocol;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
@@ -99,7 +97,7 @@ namespace Gregal.Networking {
                 _logger.LogInformation("Conexión con {ip} cerrada.", remoteIp);
             }
         }
-
+         
         private async Task ReadStreamUntilClosed(TcpClient client, string remoteIp, CancellationToken ct) {
             using var stream = client.GetStream();
 

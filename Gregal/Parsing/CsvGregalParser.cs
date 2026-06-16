@@ -13,7 +13,7 @@ public class CsvGregalParser : IParser {
 
     public ParseResult? Parse(string data) {
         if (string.IsNullOrWhiteSpace(data)) return null;
-
+        
         // Ignorar cabeceras si el tester las envía por error
         if (data.StartsWith("msg_id", StringComparison.OrdinalIgnoreCase) ||
             data.StartsWith("codSala", StringComparison.OrdinalIgnoreCase)) return null;
