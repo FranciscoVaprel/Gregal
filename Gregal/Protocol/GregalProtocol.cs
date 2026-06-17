@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-
+﻿
 namespace Gregal.Protocol {
     public static class GregalProtocol {
         public enum MessageStatus {

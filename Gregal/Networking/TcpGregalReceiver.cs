@@ -5,12 +5,10 @@ using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
-using System.Timers;
 using static Gregal.Protocol.GregalProtocol;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Gregal.Networking {
-    public class TcpGregalReceiver : IGregalReceiver {
+    public class TcpGregalReceiver : IHostedService {
         private readonly ILogger<TcpGregalReceiver> _logger;
         private readonly GregalParserEngine _parser;
         private readonly IOptionsMonitor<NetworkSettings> _network;        
@@ -22,6 +20,13 @@ namespace Gregal.Networking {
             NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
         };
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="logger"></param>
+        /// <param name="network"></param>
+        /// <param name="parser"></param>
+        /// <param name="repo"></param>
         public TcpGregalReceiver(
             ILogger<TcpGregalReceiver> logger,
             IOptionsMonitor<NetworkSettings> network,
@@ -33,21 +38,34 @@ namespace Gregal.Networking {
             _repo = repo;
         }
 
+        // Mapeamos el ciclo de arranque de .NET a tu método ListenAsync
+        public Task StartAsync(CancellationToken cancellationToken) {
+            // Ejecutamos ListenAsync en segundo plano para no bloquear el hilo de arranque principal
+            _ = ListenAsync(cancellationToken);
+            return Task.CompletedTask;
+        }
+
+        // Mapeamos el ciclo de parada de .NET a tu método Stop
+        public Task StopAsync(CancellationToken cancellationToken) {
+            Stop();
+            _logger.LogInformation("Servidor TCP detenido de manera ordenada.");
+            return Task.CompletedTask;
+        }
+
+
         /// <summary>        
         ///    _server.Start(): El sistema operativo reserva el puerto(ej. 5000). A partir de aquí, el servidor es visible en la red.
 
         ///    await _server.AcceptTcpClientAsync(ct): El código se detiene aquí.No consume CPU, simplemente espera. Cuando un cliente se conecta, se "despierta" y nos entrega un objeto client.
-
-
         ///    SetSocketOption (KeepAlive): Activa los pulsos de mantenimiento.
-
         ///    TcpKeepAliveTime: Define cuánto tiempo de silencio debe pasar antes de enviar el primer pulso (ej. 30 segundos).
-
         /// TcpKeepAliveInterval: Si el primer pulso no tiene respuesta, define cada cuánto tiempo reintentar antes de dar la conexión por muerta.
-
         /// _ = HandleIncomingConnection(...): Esto es fundamental.El símbolo _ = (discard)significa: "Inicia la gestión de este cliente en un hilo aparte y vuelve inmediatamente al while para aceptar al siguiente". Sin esto, tu servidor solo podría atender a una persona a la vez.
         /// </summary> 
-        
+
+
+
+
         public async Task ListenAsync(CancellationToken ct) {
             var settings = _network.CurrentValue;
             var port = settings.TcpPort;

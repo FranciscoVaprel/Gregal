@@ -21,7 +21,7 @@ namespace Gregal.Networking {
     ///   - Así evitamos condiciones de carrera sobre _accumulator y no tragamos
     ///     excepciones en Fire & Forget.
     /// </summary>
-    public class SerialGregalReceiver : IGregalReceiver {
+    public class SerialGregalReceiver : IHostedService {
         private readonly ILogger<SerialGregalReceiver> _logger;
         private readonly IOptionsMonitor<NetworkSettings> _network;
         private readonly GregalParserEngine _parser;
@@ -69,6 +69,20 @@ namespace Gregal.Networking {
             };
 
             _port.DataReceived += OnDataReceived;
+        }
+
+        // Mapeamos el ciclo de arranque de .NET a tu método ListenAsync
+        public Task StartAsync(CancellationToken cancellationToken) {
+            // Ejecutamos ListenAsync en segundo plano para no bloquear el hilo de arranque principal
+            _ = ListenAsync(cancellationToken);
+            return Task.CompletedTask;
+        }
+
+        // Mapeamos el ciclo de parada de .NET a tu método Stop
+        public Task StopAsync(CancellationToken cancellationToken) {
+            Stop();
+            _logger.LogInformation("Servidor TCP detenido de manera ordenada.");
+            return Task.CompletedTask;
         }
 
         // ── Arranque ──────────────────────────────────────────────────
