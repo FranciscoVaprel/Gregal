@@ -17,5 +17,5 @@ namespace Gregal.Protocol {
         public HistoricoDTO? Data { get; set; }
     }
 
-    
+  
 }

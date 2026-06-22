@@ -56,5 +56,5 @@ El servidor responderá siempre con un JSON que confirma el estado del procesami
     Timeout de Inactividad: Si no se detecta tráfico tras 5 minutos, el servidor cerrará el socket de forma automática.
     Confirmación: Una partida no se considera procesada hasta que el servidor devuelva status: "Success".
 
-© 2026 Proyecto Gregal - Departamento de Sistemas
-
+Como instalar el programa como servicio:
+ sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe" start= auto displayname= "Gregal - Receptor de Bingo"

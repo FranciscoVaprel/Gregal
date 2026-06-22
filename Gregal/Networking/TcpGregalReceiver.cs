@@ -30,7 +30,7 @@ namespace Gregal.Networking {
         public TcpGregalReceiver(
             ILogger<TcpGregalReceiver> logger,
             IOptionsMonitor<NetworkSettings> network,
-            GregalParserEngine parser, // Cambiado aquí
+            GregalParserEngine parser,
             HistoricoRepository repo) {
             _logger = logger;
             _network = network;
@@ -62,9 +62,6 @@ namespace Gregal.Networking {
         /// TcpKeepAliveInterval: Si el primer pulso no tiene respuesta, define cada cuánto tiempo reintentar antes de dar la conexión por muerta.
         /// _ = HandleIncomingConnection(...): Esto es fundamental.El símbolo _ = (discard)significa: "Inicia la gestión de este cliente en un hilo aparte y vuelve inmediatamente al while para aceptar al siguiente". Sin esto, tu servidor solo podría atender a una persona a la vez.
         /// </summary> 
-
-
-
 
         public async Task ListenAsync(CancellationToken ct) {
             var settings = _network.CurrentValue;
@@ -233,7 +230,7 @@ namespace Gregal.Networking {
             var allowedIps = _network.CurrentValue.AllowedIps;
             return allowedIps == null || allowedIps.Count == 0 || allowedIps.Contains(ip);
         }
-
+        
         public void Stop() => _server?.Stop();
     }
 }

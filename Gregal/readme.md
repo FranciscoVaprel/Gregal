@@ -52,6 +52,8 @@ Si pones un campo mal o Firebird rechaza la consulta por una colisión en los ti
 Respuesta de Gregal:
 {"msg_id":"TX-20260616-01","status":"ERROR","error_code":"DATABASE_ERROR","message":"Error al guardar en Firebird SQL"}
 
-
 Pruebas en Hercules Setup:
 {"msg_id":"HERCULES-TEST-JSON","operation":"upsert","data":{"codSala":1,"codConc":1,"fechaSesion":"2026-06-09","partidaDia":12,"precio":2.00,"venta":500.00,"caja":250.00}}$00
+
+Creacion como servicio de Windows:
+sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe" start= auto displayname= "Gregal - Receptor de Bingo"

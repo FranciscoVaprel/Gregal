@@ -1,5 +1,4 @@
-﻿
-namespace Gregal.Protocol {
+﻿namespace Gregal.Protocol {
     public static class GregalProtocol {
         public enum MessageStatus {
             SUCCESS,
