@@ -1,7 +1,6 @@
 ﻿using Gregal.Config;
 using Gregal.Data;
 using Gregal.Parsing;
-using Gregal.Protocol;
 using Microsoft.Extensions.Options;
 using System.IO.Ports;
 using System.Text;
@@ -56,16 +55,20 @@ namespace Gregal.Networking {
             _parser = parser;
             _repo = repo;
 
-
             networkSettings = _network.CurrentValue;
 
             _port = new SerialPort(networkSettings.ComPort, networkSettings.BaudRate) {
-                DataBits = 8,
-                Parity = Parity.None,
-                StopBits = StopBits.One,
-                Encoding = Encoding.UTF8,
-                ReadTimeout = SerialPort.InfiniteTimeout,
-                WriteTimeout = 2000
+                DataBits = networkSettings.SerialDataBits,
+                Parity = networkSettings.SerialParity,
+                StopBits = networkSettings.SerialStopBits,
+                Encoding = Encoding.GetEncoding(networkSettings.SerialEncoding),
+                Handshake = networkSettings.SerialHandshake,
+                RtsEnable = networkSettings.SerialRtsEnable,
+                DtrEnable = networkSettings.SerialDtrEnable,
+                ReadTimeout = networkSettings.SerialReadTimeoutMs,
+                WriteTimeout = networkSettings.SerialWriteTimeoutMs,
+                ReadBufferSize = networkSettings.SerialReadBufferSize,
+                WriteBufferSize = networkSettings.SerialWriteBufferSize
             };
 
             _port.DataReceived += OnDataReceived;
@@ -87,9 +90,9 @@ namespace Gregal.Networking {
 
         // ── Arranque ──────────────────────────────────────────────────
         public async Task ListenAsync(CancellationToken ct) {
-            
+
             try {
-                _port.Open(); 
+                _port.Open();
                 _logger.LogInformation("Puerto serie abierto: {port} a {baud} baudios.", networkSettings.ComPort, networkSettings.BaudRate);
 
                 // Procesa mensajes del canal hasta que se cancele

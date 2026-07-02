@@ -4,21 +4,15 @@ using Gregal.Parsing;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 using static Gregal.Protocol.GregalProtocol;
 
 namespace Gregal.Networking {
     public class TcpGregalReceiver : IHostedService {
         private readonly ILogger<TcpGregalReceiver> _logger;
         private readonly GregalParserEngine _parser;
-        private readonly IOptionsMonitor<NetworkSettings> _network;        
+        private readonly IOptionsMonitor<NetworkSettings> _network;
         private readonly HistoricoRepository _repo;
-        private TcpListener? _server;
-        
-        private static readonly JsonSerializerOptions _options = new() {
-            PropertyNameCaseInsensitive = true,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-        };
+        private TcpListener? _server;        
 
         /// <summary>
         /// Constructor
@@ -112,7 +106,7 @@ namespace Gregal.Networking {
                 _logger.LogInformation("Conexión con {ip} cerrada.", remoteIp);
             }
         }
-         
+
         private async Task ReadStreamUntilClosed(TcpClient client, string remoteIp, CancellationToken ct) {
             using var stream = client.GetStream();
 
@@ -136,7 +130,7 @@ namespace Gregal.Networking {
                     }
 
                     accumulator += System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    
+
                     if (accumulator.Length > settings.TcpMaxBufferChars) {
                         _logger.LogWarning("X ADVERTENCIA: Trama de red excedida. Tamaño: {len} bytes. IP: {ip} (Límite: {max})",
                             accumulator.Length, remoteIp, settings.TcpMaxBufferChars);
@@ -154,7 +148,7 @@ namespace Gregal.Networking {
                         accumulator = string.Empty;
                         continue;
                     }
-                    
+
                     accumulator = await ExtractAndProcessMessages(accumulator, stream, remoteIp, ct);
                 }
             }
@@ -224,13 +218,13 @@ namespace Gregal.Networking {
                 _logger.LogError(ex, "X ERROR con {ip}", remoteIp);
                 return GregalProtocolFactory.CreateError(ErrorCode.INTERNAL_SERVER_ERROR, msgId);
             }
-        }                
+        }
 
         private bool IsIpAuthorized(string ip) {
             var allowedIps = _network.CurrentValue.AllowedIps;
             return allowedIps == null || allowedIps.Count == 0 || allowedIps.Contains(ip);
         }
-        
+
         public void Stop() => _server?.Stop();
     }
 }

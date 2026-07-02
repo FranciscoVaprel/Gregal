@@ -1,6 +1,5 @@
 ﻿using Gregal.Models;
 using System.Globalization;
-using Microsoft.Extensions.Logging;
 
 namespace Gregal.Parsing;
 
@@ -13,7 +12,7 @@ public class CsvGregalParser : IParser {
 
     public ParseResult? Parse(string data) {
         if (string.IsNullOrWhiteSpace(data)) return null;
-        
+
         // Ignorar cabeceras si el tester las envía por error
         if (data.StartsWith("msg_id", StringComparison.OrdinalIgnoreCase) ||
             data.StartsWith("codSala", StringComparison.OrdinalIgnoreCase)) return null;
@@ -44,10 +43,10 @@ public class CsvGregalParser : IParser {
     }
 
     // Método auxiliar para limpiar el código y loguear el error exacto
-    private HistoricoDTO? LogFormatError(string campo, string valor) {
-        _logger.LogWarning("X ERROR DE FORMATO: El campo {campo} debe ser numérico. Recibido: '{valor}'", campo, valor);
-        return null;
-    }
+    //private HistoricoDTO? LogFormatError(string campo, string valor) {
+    //    _logger.LogWarning("X ERROR DE FORMATO: El campo {campo} debe ser numérico. Recibido: '{valor}'", campo, valor);
+    //    return null;
+    //}
 
     private decimal GetDecimal(string[] cols, int index) {
         if (index >= cols.Length || string.IsNullOrWhiteSpace(cols[index])) return 0m;

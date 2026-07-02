@@ -1,4 +1,6 @@
-﻿namespace Gregal.Config;
+﻿using System.IO.Ports;
+
+namespace Gregal.Config;
 
 public class NetworkSettings {
     public string Mode { get; set; } = "TCP";
@@ -12,9 +14,24 @@ public class NetworkSettings {
     public int TcpReadTimeoutMinutes { get; set; } = 5;
     public int TcpMaxBufferChars { get; set; } = 102400;
 
+    // Parámetros de Sincronización y Línea (Nuevos)
+    public int SerialDataBits { get; set; } = 8;
+    public Parity SerialParity { get; set; } = Parity.None;
+    public StopBits SerialStopBits { get; set; } = StopBits.One;
+    public string SerialEncoding { get; set; } = "UTF-8";
+
     // Delimitador para el protocolo serie.
     // '\0' = byte nulo (igual que TCP, recomendado si el otro extremo es software)
     // '\n' = salto de línea (más común con dispositivos hardware)
     public char SerialDelimiter { get; set; } = '\0';
+
+    // Nuevos parámetros mapeados
+    public Handshake SerialHandshake { get; set; } = Handshake.None;
+    public bool SerialRtsEnable { get; set; } = false;
+    public bool SerialDtrEnable { get; set; } = false;
+    public int SerialReadTimeoutMs { get; set; } = -1; // -1 equivale a SerialPort.InfiniteTimeout
+    public int SerialWriteTimeoutMs { get; set; } = 2000;
+    public int SerialReadBufferSize { get; set; } = 4096;
+    public int SerialWriteBufferSize { get; set; } = 4096;
 
 }

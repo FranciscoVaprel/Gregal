@@ -1,5 +1,4 @@
 ﻿using System;
-using System;
 using System.Text.Json.Serialization;
 
 namespace Gregal.Models {
@@ -71,6 +70,7 @@ namespace Gregal.Models {
         // Premios
         public decimal?[] Premios { get; set; } = new decimal?[99];
 
+        /*
         private HistoricoDTO MapEntityToDto(Historico h) {
             var dto = new HistoricoDTO {
                 CodSala = h.COD_SALA,
@@ -147,5 +147,6 @@ namespace Gregal.Models {
 
             return dto;
         }
+        */
     }
 }

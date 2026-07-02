@@ -1,4 +1,3 @@
-using Gregal;
 using Gregal.Config;
 using Gregal.Data;
 using Gregal.Networking;
@@ -6,7 +5,8 @@ using Gregal.Parsing;
 using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
-//sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe" start= auto displayname= "Gregal - Receptor de Bingo"
+// sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe"
+// start= auto displayname= "Gregal - Receptor de Bingo"
 // 🚀 Indicar a .NET que gestione el ciclo de vida como Servicio de Windows
 builder.Services.AddWindowsService(options => {
     options.ServiceName = "GregalReceiverService";
