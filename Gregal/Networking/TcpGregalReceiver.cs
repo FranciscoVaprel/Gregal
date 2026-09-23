@@ -34,7 +34,19 @@ namespace Gregal.Networking {
 
         // Mapeamos el ciclo de arranque de .NET a tu método ListenAsync
         public Task StartAsync(CancellationToken cancellationToken) {
-            // Ejecutamos ListenAsync en segundo plano para no bloquear el hilo de arranque principal
+            // El bind del puerto se hace de forma síncrona aquí (no dentro del fire-and-forget)
+            // para que un fallo (puerto ocupado, IP inválida...) haga fallar el arranque del host
+            // de forma visible, en vez de quedar como una excepción "unobserved" silenciosa.
+            var settings = _network.CurrentValue;
+            var address = IPAddress.Parse(settings.TcpAddress);
+
+            _server = new TcpListener(address, settings.TcpPort);
+            _server.Start();
+
+            _logger.LogInformation("Servidor TCP iniciado en {address}:{port}", address, settings.TcpPort);
+
+            // El bucle de aceptación de clientes sí puede vivir en segundo plano:
+            // sus propios errores ya se capturan y loguean dentro de ListenAsync.
             _ = ListenAsync(cancellationToken);
             return Task.CompletedTask;
         }
@@ -59,17 +71,10 @@ namespace Gregal.Networking {
 
         public async Task ListenAsync(CancellationToken ct) {
             var settings = _network.CurrentValue;
-            var port = settings.TcpPort;
-            var address = IPAddress.Parse(settings.TcpAddress);
-
-            _server = new TcpListener(address, port);
-            _server.Start();
-
-            _logger.LogInformation("Servidor TCP iniciado en {address}:{port}", address, port);
 
             while (!ct.IsCancellationRequested) {
                 try {
-                    var client = await _server.AcceptTcpClientAsync(ct);
+                    var client = await _server!.AcceptTcpClientAsync(ct);
 
                     // Aplicamos Keep-Alive usando los valores de la configuración[cite: 2]
                     client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
@@ -210,6 +215,10 @@ namespace Gregal.Networking {
                     return ok
                         ? GregalProtocolFactory.CreateSuccess(msgId)
                         : GregalProtocolFactory.CreateError(ErrorCode.DATABASE_REJECTED, msgId);
+                }
+
+                if (result.ValidationError != null) {
+                    return GregalProtocolFactory.CreateError(ErrorCode.FORMAT_INVALID, msgId, result.ValidationError);
                 }
 
                 return GregalProtocolFactory.CreateError(ErrorCode.UNKNOWN_OPERATION, msgId);

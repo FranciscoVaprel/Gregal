@@ -34,6 +34,15 @@ public class CsvGregalParser : IParser {
                     Bolas = cols.Length > 44 ? cols[44] : null
                 }
             };
+
+            string? validationError = HistoricoDtoValidator.ValidateRequiredFields(result.Data);
+            if (validationError != null) {
+                _logger.LogWarning("X CAMPOS OBLIGATORIOS INVALIDOS en trama CSV {msgId}: {error}. Trama: {data}",
+                    result.MsgId, validationError, data);
+                result.Data = null;
+                result.ValidationError = validationError;
+            }
+
             return result;
         }
         catch (Exception ex) {

@@ -41,7 +41,16 @@ public class JsonGregalParser : IParser {
             }
 
             if (result.Data != null) {
-                LogSuccess(result.Data);
+                string? validationError = HistoricoDtoValidator.ValidateRequiredFields(result.Data);
+                if (validationError != null) {
+                    _logger.LogWarning("X CAMPOS OBLIGATORIOS INVALIDOS en trama {msgId}: {error}. Trama: {data}",
+                        result.MsgId, validationError, data);
+                    result.Data = null;
+                    result.ValidationError = validationError;
+                }
+                else {
+                    LogSuccess(result.Data);
+                }
             }
 
             return result;

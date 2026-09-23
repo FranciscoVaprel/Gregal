@@ -201,6 +201,10 @@ namespace Gregal.Networking {
                         : GregalProtocolFactory.CreateError(ErrorCode.DATABASE_REJECTED, msgId);
                 }
 
+                if (result.ValidationError != null) {
+                    return GregalProtocolFactory.CreateError(ErrorCode.FORMAT_INVALID, msgId, result.ValidationError);
+                }
+
                 return GregalProtocolFactory.CreateError(ErrorCode.UNKNOWN_OPERATION, msgId);
             }
             catch (Exception ex) {
