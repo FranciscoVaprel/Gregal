@@ -9,7 +9,7 @@ using static Gregal.Protocol.GregalProtocol;
 
 namespace Gregal.Networking {
     /// <summary>
-    /// Receptor RS232. Implementa IGregalReceiver igual que TcpGregalReceiver
+    /// Receptor RS232. Es un IHostedService independiente, igual que TcpGregalReceiver,
     /// pero usando SerialPort como transporte.
     ///
     /// Arquitectura de concurrencia:

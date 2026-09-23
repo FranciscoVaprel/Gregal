@@ -29,10 +29,10 @@ sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe" sta
 
 `Program.cs` registers **two independent `IHostedService` implementations** that run concurrently and share the same singletons (`GregalParserEngine`, `HistoricoRepository`):
 
-- `Networking/TcpGregalReceiver.cs` — listens on `NetworkSettings.TcpAddress:TcpPort`, accepts multiple concurrent clients (fire-and-forget per connection), enforces an IP allow-list (`NetworkSettings.AllowedIps`).
+- `Networking/TcpGregalReceiver.cs` — listens on `NetworkSettings.TcpAddress:TcpPort`, accepts multiple concurrent clients (fire-and-forget per connection), enforces an IP allow-list (`NetworkSettings.AllowedIps`). The port bind (`IPAddress.Parse`/`_server.Start()`) happens synchronously in `StartAsync` on purpose, so a bad address or an already-bound port fails host startup loudly instead of dying silently in the background accept loop.
 - `Networking/SerialGregalReceiver.cs` — owns a `SerialPort` configured from `NetworkSettings`. The `DataReceived` event (fired on a ThreadPool thread) only accumulates bytes and extracts complete frames; it hands each frame to an unbounded `Channel<string>`, which a single async consumer loop (`ProcessChannelAsync`) drains with real `await`. This avoids blocking the serial event thread and avoids races on the accumulator.
 
-Note: `Worker.cs` and `Networking/IGregalReceiver.cs` are a leftover from an earlier single-transport design and are **not** wired into DI anymore — don't assume `Worker` is on the execution path.
+There is no shared base class or common interface between the two receivers (an earlier `Worker`/`IGregalReceiver` abstraction was removed as dead code) — each is a standalone `IHostedService` registered directly in `Program.cs`.
 
 ### Message pipeline (identical shape on both transports)
 
@@ -52,7 +52,7 @@ raw bytes → string accumulator → split on delimiter → GregalParserEngine.P
 
 ### Configuration
 
-Three strongly-typed options sections bound from `appsettings.json` via `IOptionsMonitor<T>` (Config/*.cs): `GeneralSettings`, `NetworkSettings` (covers both TCP and serial params — both receivers always run regardless of the `Mode` field, which is currently vestigial), `DatabaseSettings`. `Settings/GregalSettings.cs` is an older, unused settings shape — don't extend it, extend the `Config/*` classes instead.
+Three strongly-typed options sections bound from `appsettings.json` via `IOptionsMonitor<T>` (Config/*.cs): `GeneralSettings`, `NetworkSettings` (covers both TCP and serial params — both receivers always run regardless of the `Mode` field, which is currently vestigial), `DatabaseSettings`.
 
 The Firebird connection string in `appsettings.json` currently embeds a plaintext password; be careful not to further propagate that value (e.g. into logs, docs, or commit messages) when editing nearby code.
 
