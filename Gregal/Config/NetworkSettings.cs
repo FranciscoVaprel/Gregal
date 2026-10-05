@@ -3,6 +3,15 @@
 namespace Gregal.Config;
 
 public class NetworkSettings {
+    // Activa/desactiva TcpGregalReceiver y SerialGregalReceiver (el protocolo
+    // JSON/CSV original) juntos, como IHostedService, desde appsettings.json
+    // sin tocar Program.cs. A false por defecto: hoy el receptor principal es
+    // el del protocolo de eventos (ver TagProtocolSettings.Enabled).
+    public bool Enabled { get; set; } = false;
+
+    // Vestigial: no selecciona nada (los dos receptores de arriba van juntos,
+    // activados por Enabled). Se mantiene por compatibilidad con config ya
+    // desplegada; no lo uses para decidir nada nuevo.
     public string Mode { get; set; } = "TCP";
     public int TcpPort { get; set; }
     public string TcpAddress { get; set; } = "127.0.0.1";

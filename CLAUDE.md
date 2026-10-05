@@ -44,6 +44,7 @@ raw bytes → string accumulator → split on delimiter → GregalParserEngine.P
 
 - Framing delimiter: `\0` for TCP (hardcoded) and `NetworkSettings.SerialDelimiter` for serial (configurable, defaults to `\0`). Buffers are bounded by `NetworkSettings.TcpMaxBufferChars`; exceeding it clears the buffer and replies `BUFFER_EXCEEDED`.
 - `GregalParserEngine` (Parsing/GregalParserEngine.cs) sniffs the raw string: `operation":"ping"` / literal `ping` → pong; starts with `{` → `JsonGregalParser`; anything else → `CsvGregalParser`. CSV is positional (`msg_id;operation;codSala;codConc;fecha;partidaDia;precio;venta;caja;...`), for legacy hardware that can't emit JSON.
+- Both parsers call the shared `Parsing/HistoricoDtoValidator.ValidateRequiredFields` before returning a `ParseResult`, rejecting a `HistoricoDTO` that's missing `CodSala`/`CodConc`/`PartidaDia`/`FechaSesion` (the fields that make up the Firebird upsert key below) instead of letting an ambiguous `0`/empty key reach the database.
 - Responses are always a `GregalResponse` JSON object serialized with a trailing `\0` (see `GregalProtocolFactory`), even on error — the client must never be left waiting.
 
 ### Persistence
