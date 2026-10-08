@@ -1,9 +1,16 @@
 using Gregal.Config;
 using Gregal.Data;
+using Gregal.Diagnostics;
 using Gregal.Networking;
 using Gregal.Parsing;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Serilog;
+using System.IO.Ports;
+
+// Gregal solo se despliega en Windows (servicio de Windows, hardware RS232
+// local): marca el ensamblado entero para no avisar (CA1416) al usar APIs
+// de Windows como InfoSistema.DescribirRam().
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
 
 var builder = Host.CreateApplicationBuilder(args);
 // sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe"
@@ -82,45 +89,44 @@ static void MostrarBannerDeArranque(IConfiguration configuration) {
     var network = configuration.GetSection("NetworkSettings").Get<NetworkSettings>() ?? new NetworkSettings();
     var tag = configuration.GetSection("TagProtocolSettings").Get<TagProtocolSettings>() ?? new TagProtocolSettings();
     string logsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+    string[] puertosDisponibles = SerialPort.GetPortNames();
 
     Console.WriteLine();
     Console.WriteLine(new string('=', 78));
     Console.WriteLine(" Gregal - Receptor de histórico de partidas de Bingo");
+    Console.WriteLine(new string('-', 78));
+
+    // Características del PC, para ver de un vistazo si esta máquina sirve
+    // para ejecutar Gregal (puertos COM disponibles, recursos básicos).
+    Console.WriteLine($" PC: {Environment.MachineName} | {Environment.OSVersion.VersionString} | " +
+                       $"{(Environment.Is64BitOperatingSystem ? "64" : "32")} bits");
+    Console.WriteLine($" CPU: {Environment.ProcessorCount} núcleos | RAM: {InfoSistema.DescribirRam()} | " +
+                       $"Disco libre: {InfoSistema.DescribirDiscoLibre(AppDomain.CurrentDomain.BaseDirectory)}");
+    Console.WriteLine($" Puertos COM detectados: {(puertosDisponibles.Length > 0 ? string.Join(", ", puertosDisponibles) : "ninguno")}");
     Console.WriteLine(new string('=', 78));
 
     if (!network.Enabled && !tag.Enabled) {
-        Console.WriteLine(" ¡ATENCIÓN! No hay ningún receptor activo (NetworkSettings.Enabled y");
-        Console.WriteLine(" TagProtocolSettings.Enabled están ambos a false). Gregal no va a recibir");
-        Console.WriteLine(" ni guardar nada hasta que actives al menos uno en appsettings.json.");
+        Console.WriteLine(" ¡ATENCIÓN! Ningún receptor activo (NetworkSettings.Enabled y");
+        Console.WriteLine(" TagProtocolSettings.Enabled están ambos a false en appsettings.json).");
         Console.WriteLine(new string('=', 78));
         Console.WriteLine();
         return;
     }
 
-    Console.WriteLine(" Qué hace:");
-    Console.WriteLine("   Recibe el histórico de cada partida de bingo y lo guarda en la tabla");
-    Console.WriteLine("   HISTORICO de Firebird. Activo ahora mismo:");
-
     if (tag.Enabled) {
         bool salaConfigurada = tag.DefaultCodSala > 0 && tag.DefaultCodConc > 0;
-        Console.WriteLine();
-        Console.WriteLine("   [Protocolo de eventos \"tag\"] (*CODIGO<valor>#, por RS232)");
-        Console.WriteLine($"     - ComPort: {tag.ComPort}");
-        Console.WriteLine($"     - DefaultCodSala / DefaultCodConc: {tag.DefaultCodSala} / {tag.DefaultCodConc}" +
-                           (salaConfigurada ? "" : "  <- A 0: las partidas se RECHAZARÁN hasta configurarlo."));
+        bool puertoDetectado = puertosDisponibles.Contains(tag.ComPort, StringComparer.OrdinalIgnoreCase);
+        Console.WriteLine($" [Tag] ComPort={tag.ComPort}{(puertoDetectado ? "" : " <- NO detectado en este PC")} | " +
+                           $"CodSala/CodConc={tag.DefaultCodSala}/{tag.DefaultCodConc}" +
+                           (salaConfigurada ? "" : " <- sin configurar, se rechazarán partidas"));
     }
     if (network.Enabled) {
-        Console.WriteLine();
-        Console.WriteLine("   [Protocolo JSON/CSV] (por TCP y RS232 a la vez)");
-        Console.WriteLine($"     - TCP: {network.TcpAddress}:{network.TcpPort}");
-        Console.WriteLine($"     - Serie: {network.ComPort}");
+        bool puertoDetectado = puertosDisponibles.Contains(network.ComPort, StringComparer.OrdinalIgnoreCase);
+        Console.WriteLine($" [JSON/CSV] TCP={network.TcpAddress}:{network.TcpPort} | " +
+                           $"Serie={network.ComPort}{(puertoDetectado ? "" : " <- NO detectado en este PC")}");
     }
 
-    Console.WriteLine();
-    Console.WriteLine(" En cualquier caso necesita conexión a Firebird accesible");
-    Console.WriteLine(" (DatabaseSettings.ConnectionString).");
-    Console.WriteLine();
-    Console.WriteLine($" Logs en: {logsFolder}");
+    Console.WriteLine($" Logs: {logsFolder}");
     Console.WriteLine(new string('=', 78));
     Console.WriteLine();
 }

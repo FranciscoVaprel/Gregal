@@ -7,6 +7,13 @@
     <UserSecretsId>dotnet-Gregal-81bca07e-8973-4a5c-a54a-d10fd2c270fe</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Gregal corre como servicio de Windows sobre hardware RS232 local: nunca
+       se despliega en otra plataforma. Declararlo evita avisos de
+       compatibilidad (CA1416) al usar APIs de Windows (p.ej. memoria física). -->
+  <ItemGroup>
+    <SupportedPlatform Include="windows" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="10.3.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.4" />
