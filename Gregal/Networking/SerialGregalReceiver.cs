@@ -30,6 +30,15 @@ namespace Gregal.Networking {
         private SerialPort _port;
         private string _accumulator = string.Empty;
 
+        // Stop() se puede invocar dos veces casi a la vez: una desde StopAsync
+        // (al parar el host) y otra desde el finally de ListenAsync (en cuanto
+        // el canal se completa). Sin este candado, ambas pueden intentar
+        // cerrar/disponer el mismo SerialPort a la vez, lo que dispara un bug
+        // conocido de System.IO.Ports (NullReferenceException dentro de
+        // SerialStream.Dispose). _detenido además evita repetir el cierre.
+        private readonly object _stopLock = new();
+        private bool _detenido;
+
         /* Canal SPSC: OnDataReceived escribe, ListenAsync lee
         Un Channel<T> actúa como una tubería de alta velocidad altamente optimizada para pasar datos entre hilos de forma asíncrona.
         Cómo funciona en tu código: El evento de hardware OnDataReceived corre en un hilo del pool de Windows; extrae la
@@ -110,15 +119,34 @@ namespace Gregal.Networking {
         }
 
         public void Stop() {
-            _messageChannel.Writer.TryComplete();
+            lock (_stopLock) {
+                if (_detenido) return;
+                _detenido = true;
 
-            if (_port != null && _port.IsOpen) {
-                _port.DataReceived -= OnDataReceived;
-                _port.Close();
-                _logger.LogInformation("Puerto serie cerrado.");
+                _messageChannel.Writer.TryComplete();
+
+                if (_port == null) return;
+
+                try {
+                    if (_port.IsOpen) {
+                        _port.DataReceived -= OnDataReceived;
+                        _port.Close();
+                        _logger.LogInformation("Puerto serie cerrado.");
+                    }
+                    _port.Dispose();
+                }
+                catch (Exception ex) {
+                    // Bug conocido de System.IO.Ports: cerrar/disponer un
+                    // SerialPort puede lanzar una NullReferenceException
+                    // interna (sobre todo con puertos virtuales tipo
+                    // com0com). No es un fallo nuestro recuperable, así que
+                    // solo se registra para no tumbar el apagado del host.
+                    _logger.LogWarning(ex, "Error (no crítico) cerrando el puerto serie.");
+                }
+                finally {
+                    _port = null;
+                }
             }
-            _port?.Dispose();
-            _port = null;
         }
 
         private void OnDataReceived(object sender, SerialDataReceivedEventArgs e) {

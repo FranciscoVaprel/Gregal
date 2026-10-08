@@ -41,6 +41,15 @@ namespace Gregal.Networking {
         private SerialPort? _port;
         private string _accumulator = string.Empty;
 
+        // Stop() se puede invocar dos veces casi a la vez: una desde StopAsync
+        // (al parar el host) y otra desde el finally de ListenAsync (en cuanto
+        // el canal se completa). Sin este candado, ambas pueden intentar
+        // cerrar/disponer el mismo SerialPort a la vez, lo que dispara un bug
+        // conocido de System.IO.Ports (NullReferenceException dentro de
+        // SerialStream.Dispose). _detenido además evita repetir el cierre.
+        private readonly object _stopLock = new();
+        private bool _detenido;
+
         // El primer fragmento tras abrir el puerto (o tras limpiar el buffer
         // por desbordamiento) puede ser la cola de un evento ya empezado
         // antes de que Gregal se pusiera a escuchar (p.ej. arrancar a mitad
@@ -128,16 +137,35 @@ namespace Gregal.Networking {
         }
 
         public void Stop() {
-            _messageChannel.Writer.TryComplete();
-            _persistChannel.Writer.TryComplete();
+            lock (_stopLock) {
+                if (_detenido) return;
+                _detenido = true;
 
-            if (_port != null && _port.IsOpen) {
-                _port.DataReceived -= OnDataReceived;
-                _port.Close();
-                _logger.LogInformation("Puerto serie (protocolo tag) cerrado.");
+                _messageChannel.Writer.TryComplete();
+                _persistChannel.Writer.TryComplete();
+
+                if (_port == null) return;
+
+                try {
+                    if (_port.IsOpen) {
+                        _port.DataReceived -= OnDataReceived;
+                        _port.Close();
+                        _logger.LogInformation("Puerto serie (protocolo tag) cerrado.");
+                    }
+                    _port.Dispose();
+                }
+                catch (Exception ex) {
+                    // Bug conocido de System.IO.Ports: cerrar/disponer un
+                    // SerialPort puede lanzar una NullReferenceException
+                    // interna (sobre todo con puertos virtuales tipo
+                    // com0com). No es un fallo nuestro recuperable, así que
+                    // solo se registra para no tumbar el apagado del host.
+                    _logger.LogWarning(ex, "Error (no crítico) cerrando el puerto serie (protocolo tag).");
+                }
+                finally {
+                    _port = null;
+                }
             }
-            _port?.Dispose();
-            _port = null;
         }
 
         private void OnDataReceived(object sender, SerialDataReceivedEventArgs e) {
