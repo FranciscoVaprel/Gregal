@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Text.Json.Serialization;
 
 namespace Gregal.Models {
     public class HistoricoDTO {
@@ -69,84 +68,5 @@ namespace Gregal.Models {
 
         // Premios
         public decimal?[] Premios { get; set; } = new decimal?[99];
-
-        /*
-        private HistoricoDTO MapEntityToDto(Historico h) {
-            var dto = new HistoricoDTO {
-                CodSala = h.COD_SALA,
-                CodConc = h.COD_CONC,
-                FechaSesion = h.FECHA_SESION.ToString("yyyy-MM-dd"),
-                PartidaDia = h.PARTIDA_DIA,
-                Fecha = h.FECHA,
-                PartidaAnual = h.PARTIDA_ANUAL,
-                NumDecimales = h.NUM_DECIMALES,
-                Tipo = h.TIPO,
-                // Conversión segura de TimeSpan a string
-                HoraCierre = h.HORA_CIERRE?.ToString(@"hh\:mm\:ss"),
-                HoraVenta = h.HORA_VENTA?.ToString(@"hh\:mm\:ss"),
-                HoraSorteo = h.HORA_SORTEO?.ToString(@"hh\:mm\:ss"),
-                HoraFin = h.HORA_FIN?.ToString(@"hh\:mm\:ss"),
-                HoraCierreH = h.HORA_CIERRE_H?.ToString(),
-                FechaSesionMes = h.FECHA_SESION_MES?.ToString(),
-
-                // Manejo de nulos en decimales
-                Precio = h.PRECIO ?? 0,
-                Venta = h.VENTA ?? 0,
-                Caja = h.CAJA ?? 0,
-                Tasa = h.TASA ?? 0,
-                Beneficio = h.BENEFICIO ?? 0,
-                CajaI = h.CAJA_I,
-                CajaAI = h.CAJA_A_I,
-                Acumulados = h.ACUMULADOS,
-
-                // Series y Cartones
-                Letra1 = h.LETRA1,
-                Serie1 = h.SERIE_1,
-                Del1 = h.DEL_1,
-                Al1 = h.AL_1,
-                Letra2 = h.LETRA2,
-                Serie2 = h.SERIE_2,
-                Del2 = h.DEL_2,
-                Al2 = h.AL_2,
-                Vendidos = h.VENDIDOS ?? 0,
-                LargoSerie = h.LARGO_SERIE,
-
-                // Virtuales
-                Letra1Vir = h.LETRA1_VIR,
-                Serie1Vir = h.SERIE_1_VIR,
-                Del1Vir = h.DEL_1_VIR,
-                Al1Vir = h.AL_1_VIR,
-                Letra2Vir = h.LETRA2_VIR,
-                Serie2Vir = h.SERIE_2_VIR,
-                Del2Vir = h.DEL_2_VIR,
-                Al2Vir = h.AL_2_VIR,
-                VendidosVir = h.VENDIDOS_VIR,
-
-                // Datos de Juego
-                Extracciones = h.EXTRACCIONES,
-                GuiaBolas = h.GUIABOLAS,
-                Reclamacion = h.RECLAMACION,
-                Bolas = h.BOLAS,
-                BolaLinea = h.BOLA_LINEA,
-                NumLineas = h.NUM_LINEAS,
-                HoraLinea = h.HORA_LINEA?.ToString(@"hh\:mm\:ss"),
-                CartLinea = h.CART_LINEA?.ToString(),
-                BolaBingo = h.BOLA_BINGO,
-                NumBingos = h.NUM_BINGOS,
-                HoraBingo = h.HORA_BINGO?.ToString(@"hh\:mm\:ss"),
-                CartBingo = h.CART_BINGO?.ToString()
-            };
-
-            // Mapeo dinámico de los 99 premios de la entidad al array del DTO
-            for (int i = 1; i <= 99; i++) {
-                var prop = typeof(Historico).GetProperty($"PREMIO{i}");
-                if (prop != null) {
-                    dto.Premios[i - 1] = (decimal?)prop.GetValue(h);
-                }
-            }
-
-            return dto;
-        }
-        */
     }
 }
