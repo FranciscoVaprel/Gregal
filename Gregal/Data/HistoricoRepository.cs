@@ -26,7 +26,14 @@ public class HistoricoRepository {
         await _dbSemaphore.WaitAsync();
         try {
             using (FbConnection connection = new FbConnection(_dbSettings.CurrentValue.ConnectionString)) {
-                await connection.OpenAsync();
+                try {
+                    await connection.OpenAsync();
+                }
+                catch (Exception ex) {
+                    _logger.LogError(ex, "X Error al conectar con Firebird para guardar Sala {sala}, Partida {partida}.",
+                        dto.CodSala, dto.PartidaDia);
+                    return false;
+                }
 
                 using (FbTransaction trans = connection.BeginTransaction()) {
                     try {
@@ -48,7 +55,7 @@ public class HistoricoRepository {
                     @BENEFICIO, @CAJA_I, @CAJA_A_I, @ACUMULADOS, @LETRA1, @SERIE_1, @DEL_1, @AL_1, @LETRA2, @SERIE_2,
                     @DEL_2, @AL_2, @VENDIDOS, @LARGO_SERIE, @EXTRACCIONES, @GUIABOLAS,
                     @RECLAMACION, @BOLAS, @BOLA_LINEA, @NUM_LINEAS, @HORA_LINEA, @CART_LINEA, @BOLA_BINGO,
-                    @NUM_Bingos, @HORA_BINGO, @CART_BINGO, @FECHA_SESION_MES,
+                    @NUM_BINGOS, @HORA_BINGO, @CART_BINGO, @FECHA_SESION_MES,
                     {parametrosPremios}
                 )
                 MATCHING (COD_SALA, COD_CONC, FECHA_SESION, PARTIDA_DIA)";
@@ -112,8 +119,6 @@ public class HistoricoRepository {
                                 }
                                 cmd.Parameters.Add($"@PR{i}", valor);
                             }
-
-                            _logger.LogDebug("Intentando guardar Partida {partida} de la Sala {sala}...", dto.CodSala, dto.PartidaDia);
 
                             // --- Advertencia de Negocio: Validación de datos sospechosos ---
                             if (dto.Precio <= 0) {
