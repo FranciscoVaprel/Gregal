@@ -1,4 +1,5 @@
-﻿using Gregal.Models;
+﻿using System.Linq;
+using Gregal.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Gregal.Parsing {
@@ -16,8 +17,11 @@ namespace Gregal.Parsing {
             if (string.IsNullOrWhiteSpace(rawData)) return null;
             string cleanData = rawData.Trim();
 
-            // 1. Detección de PING
-            if (cleanData.ToLower().Contains("\"operation\":\"ping\"") || cleanData.ToLower() == "ping") {
+            // 1. Detección de PING. Se compara sin espacios para no depender de que el
+            // JSON venga sin formatear (p.ej. "operation": "ping" con espacio tras los
+            // dos puntos, muy habitual, no coincidiría con una comparación literal).
+            string sinEspacios = string.Concat(cleanData.Where(c => !char.IsWhiteSpace(c))).ToLowerInvariant();
+            if (sinEspacios.Contains("\"operation\":\"ping\"") || sinEspacios == "ping") {
                 return new ParseResult { IsPing = true, MsgId = "ping" };
             }
 

@@ -167,10 +167,9 @@ namespace Gregal.Networking {
             catch (Exception ex) {
                 _logger.LogError(ex, "Error inesperado con {ip}", remoteIp);
             }
-            finally {
-                client.Close();
-                _logger.LogInformation("Recursos liberados para la sesión de {ip}.", remoteIp);
-            }
+            // El cierre del cliente lo hace HandleIncomingConnection (quien lo abrió);
+            // cerrarlo aquí también era redundante (TcpClient.Close() tolera llamadas
+            // repetidas, pero duplicaba el log de cierre en cada conexión).
         }
 
         private async Task<string> ExtractAndProcessMessages(string accumulator, NetworkStream stream, string remoteIp, CancellationToken ct) {
