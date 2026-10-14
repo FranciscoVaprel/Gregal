@@ -479,4 +479,43 @@ public class PartidaAccumulatorTests {
         Assert.NotNull(dto);
         Assert.Equal("EB", dto!.Letra1);
     }
+
+    [Fact]
+    public void Feed_ConBolaFueraDeRango_SeIgnoraComoRuido() {
+        // Confirmado con una captura real del fabricante MCB: "*E101#"
+        // aparece como ruido del hardware (la bola 101 no existe).
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E45#"));
+        acumulador.Feed(EventoDe("*E101#"));
+        acumulador.Feed(EventoDe("*E0#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("45", dto!.Bolas);
+        Assert.Equal(1, dto.Extracciones);
+    }
+
+    // Confirmado (2026-10-14, cuarta ronda): hay dos fabricantes distintos
+    // (Metronia y MCB) con protocolos parecidos. En MCB, A/M/p no llevan un
+    // valor fiable (aparecen como ruido constante); en Metronia sí (ver
+    // Feed_ConPartidaRealCompleta...). Se distingue por configuración: si la
+    // sala no tiene A/M/p en su PremioCodeMap, se ignoran sin más.
+    [Fact]
+    public void Feed_ConAoMNoConfiguradosEnEstaSala_SeIgnoranEnSilencio() {
+        var settingsEstiloMcb = new TagProtocolSettings {
+            PremioCodeMap = new Dictionary<string, int> { ["L"] = 0, ["B"] = 1 }
+        };
+        var acumulador = CreateAccumulator(settingsEstiloMcb);
+
+        acumulador.Feed(EventoDe("*L2400#"));
+        acumulador.Feed(EventoDe("*A000#"));
+        acumulador.Feed(EventoDe("*M0#"));
+        acumulador.Feed(EventoDe("*p38000#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal(24m, dto!.Premios[0]); // L sí está configurado en esta sala
+        Assert.Equal(1, dto.Premios.Count(p => p.HasValue)); // A/M/p no escriben nada
+    }
 }

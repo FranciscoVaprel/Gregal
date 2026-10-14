@@ -24,6 +24,19 @@ namespace Gregal.Parsing;
 // de 'X' (que siempre es el número de serie, sin ambigüedad). 'Z' no apareció
 // ni una vez en las 7 partidas capturadas (ninguna tuvo que corregir una
 // bola), así que su implementación no se ha podido probar contra tráfico real.
+//
+// IMPORTANTE (2026-10-14, cuarta ronda): hay (al menos) DOS fabricantes de
+// hardware distintos en las salas, con protocolos parecidos pero no
+// idénticos — Metronia (el de arriba) y MCB ("VolcadoMCB.txt"). En MCB, A y
+// M (y probablemente p) no llevan un valor fiable: aparecen constantemente
+// como ruido ("*M0#*A0#*A000#...", varias veces entre cada bola) en vez de
+// una vez por partida con un importe real. No es una contradicción entre las
+// dos capturas, son máquinas distintas. Por eso PremioCodeMap decide esto
+// por configuración (ver AplicarSiEsPremioMapeado): si una sala no tiene A/
+// M/p en su PremioCodeMap, se ignoran en silencio (MCB); si los tiene
+// (como el valor por defecto, pensado para Metronia), se guardan como
+// siempre. Quien instale Gregal en una sala nueva debe revisar qué
+// fabricante tiene y ajustar PremioCodeMap en su appsettings.json.
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
@@ -177,9 +190,17 @@ public class PartidaAccumulator {
                 break;
 
             case 'E': {
+                // Confirmado con una captura real del fabricante MCB
+                // ("VolcadoMCB.txt", 2026-10-14): valores fuera de 1-90
+                // (p.ej. "*E101#") aparecen como ruido del hardware — la
+                // propia foto 'e' que llega justo antes y después es idéntica,
+                // confirmando que no es una bola real. Se descartan en vez de
+                // dejar que corrompan Bolas con un número imposible.
                 int bola = ParseInt(evt.Value);
+                if (bola is < 1 or > 90) break;
+
                 _bolasOrden.Add(bola);
-                if (bola is >= 1 and <= 90) _bolasConocidas[bola - 1] = true;
+                _bolasConocidas[bola - 1] = true;
                 ActualizarBolasDto();
                 break;
             }
@@ -416,6 +437,14 @@ public class PartidaAccumulator {
         }
     }
 
+    // Códigos cuyo significado difiere confirmadamente según el fabricante
+    // (ver la nota al principio del fichero): si la sala no los tiene en su
+    // PremioCodeMap, se ignoran sin más — no se registran como "no mapeado"
+    // porque en hardware MCB aparecen decenas de veces por partida como puro
+    // ruido, y tratarlos igual que un código realmente desconocido inundaría
+    // el log sin aportar nada.
+    private static readonly HashSet<char> CodigosSegunFabricante = new() { 'A', 'M', 'p' };
+
     private void AplicarSiEsPremioMapeado(TagEvent evt) {
         var map = _settings.CurrentValue.PremioCodeMap;
         string code = evt.Code.ToString();
@@ -423,7 +452,7 @@ public class PartidaAccumulator {
         if (map.TryGetValue(code, out int indice) && indice >= 0 && indice < _dto.Premios.Length) {
             _dto.Premios[indice] = ParseDecimal(evt.Value);
         }
-        else {
+        else if (!CodigosSegunFabricante.Contains(evt.Code)) {
             // Nivel Information a propósito: en un despliegue nuevo interesa
             // ver en el log, sin tocar configuración, qué códigos emite el
             // hardware real que no encajan con el mapeo asumido.
