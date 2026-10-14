@@ -13,10 +13,15 @@ namespace Gregal.Parsing;
 // la siguiente. Instancia con estado: una por conexión/puerto serie, nunca
 // compartida entre partidas distintas en paralelo.
 //
-// El mapeo código -> campo de HistoricoDTO es una inferencia a partir de las
-// constantes de Comunicaciones.cs (software de pantallas PidFullHD), no una
-// especificación confirmada: se deja centralizado en Aplicar() para que sea
-// fácil de corregir cuando se tenga más información real.
+// El mapeo código -> campo de HistoricoDTO se confirmó el 2026-10-14 contra
+// una captura real de 7 partidas de la sala Metronia ("7 partidas
+// Metronia.txt") y los tickets que la propia máquina imprime al final de cada
+// partida (que incluyen los mismos valores ya calculados, en claro). Los
+// campos K, T, L, B, C, P, U, V, X, J, p, A, D y H están confirmados así;
+// quedan dos cosas sin confirmar (ver comentarios en Aplicar()): el código
+// 'º' (aparece una vez por cada bola, significado desconocido) y si 'X'
+// puede significar también "borrar una bola" a mitad de partida (lo dice
+// Jaume de memoria, pero no apareció ni una vez en las 7 partidas capturadas).
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
@@ -34,11 +39,47 @@ public class PartidaAccumulator {
     // Se pone a true si alguna bola se incorporó vía un evento 'e' en vez de
     // por su *E# real — es decir, si el receptor se enganchó a mitad de
     // partida. Se dejará constancia de esto en HistoricoDTO.Reclamacion.
+    //
+    // El evento 'e' se manda aprox. una vez por segundo DURANTE TODA la
+    // partida (confirmado: "cada segundo se recibe el *f# ... o la cadena ...
+    // *e......#"), no solo al reconectar — pero en la captura real siempre
+    // llega justo despues de su *E# correspondiente, así que en una partida
+    // normal (sin desconexión real) nunca aporta bolas "nuevas" y este flag
+    // no debería activarse nunca. Pendiente de confirmar con una conexión en
+    // vivo que esto se cumple siempre (ver nota sobre el checksum más abajo).
     private bool _recuperadaParcialmente;
 
+    // Letra de edición del cartón (evento J, vía TagProtocolSettings.
+    // SerieLetraMap), aplicada a Letra1 y, si hay empalme de serie (ver
+    // AplicarSerie), también a Letra2 — confirmado con un ticket real
+    // (partida 4: dos series "EB-00179689"/"EB-00179690", misma letra "EB"
+    // para las dos). Se guarda aparte en vez de asignar directo a
+    // HistoricoDTO porque J puede llegar antes o después de X en teoría
+    // (en la captura real siempre llega después, pero no hay garantía) y así
+    // no depende del orden de llegada.
+    private string? _letraSerie;
+
+    // Cartones que han cantado línea/bingo, en el orden en que llegó su *D#/
+    // *H#. Puede haber más de uno en la misma partida (confirmado: partida 6
+    // de la captura real tuvo dos bingos, "*H2891#" y "*H3468#", ambos
+    // válidos) — HistoricoDTO.CartLinea/CartBingo los guarda como lista
+    // separada por comas, igual que ya se hace con Bolas.
+    private readonly List<int> _cartonesLinea = new();
+    private readonly List<int> _cartonesBingo = new();
+
     // Último canto de línea/bingo "tentativo": D/H lo fijan de inmediato, pero
-    // si el siguiente evento es u/h para el mismo cartón, se revierte (canto
-    // incorrecto, la partida sigue).
+    // si el siguiente evento es u/h para el MISMO cartón, se revierte (canto
+    // incorrecto, la partida sigue). Confirmado por el usuario: "u y h
+    // indican que ha habido un error en la línea y en el bingo
+    // respectivamente" — no apareció en la captura real porque esas 7
+    // partidas no tuvieron ningún canto erróneo, pero el mecanismo es
+    // correcto tal y como estaba diseñado.
+    //
+    // Limitación conocida y asumida: solo se seguimiento de UN canto
+    // tentativo a la vez por tipo. Si llegaran dos cantos (p.ej. de línea)
+    // sin confirmar/revertir antes de que llegue el siguiente, el revert solo
+    // podría deshacer el más reciente. No hay evidencia real de que esto
+    // pueda pasar (los cantos van de uno en uno en la captura disponible).
     private int? _lineaTentativa;
     private int? _bingoTentativo;
 
@@ -79,6 +120,42 @@ public class PartidaAccumulator {
             case 'T':
                 _dto.PartidaDia = ParseInt(evt.Value);
                 break;
+
+            // --- Campos confirmados el 2026-10-14 contra tickets reales ---
+            case 'K':
+                // Número de decimales (ticket no lo imprime tal cual, pero
+                // encaja con el campo ya existente HistoricoDTO.NumDecimales,
+                // hasta ahora sin usar).
+                _dto.NumDecimales = ParseInt(evt.Value);
+                break;
+            case 'P':
+                // Primer cartón vendido. Confirmado: *P2051# == ticket
+                // "SERIE/S ... 2051" (partida 1).
+                _dto.Del1 = ParseInt(evt.Value);
+                break;
+            case 'U':
+                // Último cartón vendido. Confirmado: *U2800# == ticket
+                // "SERIE/S ... 2800" (partida 1).
+                _dto.Al1 = ParseInt(evt.Value);
+                break;
+            case 'X':
+                AplicarSerie(evt.Value);
+                break;
+            case 'J':
+                AplicarLetraSerie(evt.Value);
+                break;
+            case 'M':
+                // "BT PRIMA" (bola tope de prima) en el ticket — confirmado
+                // exacto (*M55# == ticket "BT PRIMA: 55"), pero HISTORICO no
+                // tiene hoy una columna para guardarlo. Se deja en el log
+                // para no perder el dato mientras se decide si se añade una
+                // columna nueva (ver Docs/Migraciones/ para el procedimiento
+                // ya usado con BOLAS).
+                _logger.LogInformation(
+                    "Bola tope de prima (evento M) recibida: {valor}. No se persiste todavía (falta columna en HISTORICO).",
+                    evt.Value);
+                break;
+
             case 'E': {
                 int bola = ParseInt(evt.Value);
                 _extracciones++;
@@ -92,57 +169,141 @@ public class PartidaAccumulator {
             case 'e':
                 AplicarEstadoPartida(evt.Value);
                 break;
+
             case 'D':
-                AplicarCanto(evt.Value, ref _lineaTentativa, esLinea: true);
+                AplicarCantoLinea(evt.Value);
                 break;
             case 'u':
-                RevertirCantoIncorrecto(evt.Value, ref _lineaTentativa, esLinea: true);
+                RevertirCantoLinea(evt.Value);
                 break;
             case 'H':
-                AplicarCanto(evt.Value, ref _bingoTentativo, esLinea: false);
+                AplicarCantoBingo(evt.Value);
                 break;
             case 'h':
-                RevertirCantoIncorrecto(evt.Value, ref _bingoTentativo, esLinea: false);
+                RevertirCantoBingo(evt.Value);
                 break;
+
+            // 'f' (heartbeat "entre partidas") e 'Y' (entrando en
+            // comprobación) están confirmados pero no tienen efecto en el
+            // DTO: no hay campo equivalente y, sobre todo 'f', se repite una
+            // vez por segundo — tratarlos como "no mapeado" inundaría el log.
+            // 'º' aparece exactamente una vez por cada *E# (393 veces en las
+            // 7 partidas = mismas 393 bolas), pero su valor no se corresponde
+            // de forma consistente con el momento de la línea ni con ningún
+            // otro evento que hayamos podido identificar — significado
+            // todavía desconocido, pendiente de preguntarle a Jaume. Se
+            // ignora por ahora por el mismo motivo que 'f' (saldría una vez
+            // por bola).
+            case 'f':
+            case 'Y':
+            case 'º':
+                break;
+
             default:
                 AplicarSiEsPremioMapeado(evt);
                 break;
         }
     }
 
-    private void AplicarCanto(string valor, ref int? tentativo, bool esLinea) {
+    // Evento X: número de serie de los cartones, con posible empalme (p.ej.
+    // "00179689,00179690" si una serie no basta para los cartones vendidos).
+    // Confirmado con un ticket real (partida 4, dos líneas de SERIE/S).
+    //
+    // Nota sin confirmar: según Jaume, "las bolas ... se borran con *X..#"
+    // — es decir, X podría significar también "elimina esta bola" a mitad de
+    // partida. En las 7 partidas capturadas X solo apareció una vez por
+    // partida, siempre al principio como número de serie, nunca durante el
+    // sorteo. Mientras no se confirme cómo distinguir un caso del otro, aquí
+    // SIEMPRE se interpreta como número de serie — si el hardware real llega
+    // a mandar un X de borrado a mitad de partida, hoy se interpretaría mal
+    // (pisaría Serie1/Serie2 con el número de la bola a borrar).
+    private void AplicarSerie(string valor) {
+        string[] partes = valor.Split(',');
+        _dto.Serie1 = ParseIntOrNull(partes[0]);
+        if (partes.Length > 1) {
+            _dto.Serie2 = ParseIntOrNull(partes[1]);
+        }
+    }
+
+    // Evento J: código de longitud de serie -> letra de edición (ver
+    // TagProtocolSettings.SerieLetraMap). Se guarda en _letraSerie en vez de
+    // asignar directo a HistoricoDTO.Letra1/Letra2 porque Serie2 (si existe)
+    // puede no estar asignado todavía cuando llega J — en Finalizar() se
+    // aplica a ambas letras según corresponda, sin depender del orden real
+    // de llegada entre X y J (en la captura disponible X siempre llega antes
+    // que J, pero nada en el protocolo lo garantiza).
+    private void AplicarLetraSerie(string valor) {
+        int codigo = ParseInt(valor);
+        if (_settings.CurrentValue.SerieLetraMap.TryGetValue(codigo, out string? letra)) {
+            _letraSerie = letra;
+        }
+        else {
+            _logger.LogInformation("Código de longitud de serie (evento J) no mapeado: {codigo}", codigo);
+        }
+    }
+
+    // Canto de línea: *D<dígito de tipo de línea><cartón>#. Confirmado con
+    // tickets reales que el primer dígito NO forma parte del número de
+    // cartón: *D12363# (partida 1) es tipo "1" + cartón "2363", y el ticket
+    // imprime "2363-S"; *D22940# (partida 2) es tipo "2" + cartón "2940",
+    // ticket "2940-C". El dígito de tipo parece corresponder a la fila del
+    // cartón (S/C/I = Superior/Central/Inferior en el ticket) pero no hay
+    // columna en HISTORICO para guardarlo y no es necesario para el resto de
+    // la lógica, así que se descarta tras separarlo del número de cartón.
+    private void AplicarCantoLinea(string valor) {
+        int carton = QuitarDigitoDeTipo(valor);
+        if (carton <= 0) return;
+
+        _cartonesLinea.Add(carton);
+        _dto.CartLinea = string.Join(",", _cartonesLinea);
+        _dto.BolaLinea = _extracciones;
+        _dto.NumLineas = _cartonesLinea.Count;
+        _lineaTentativa = carton;
+    }
+
+    private void RevertirCantoLinea(string valor) {
+        int carton = QuitarDigitoDeTipo(valor);
+        if (_lineaTentativa == null || _lineaTentativa.Value != carton) return;
+
+        _cartonesLinea.Remove(carton);
+        _dto.CartLinea = _cartonesLinea.Count > 0 ? string.Join(",", _cartonesLinea) : null;
+        _dto.NumLineas = _cartonesLinea.Count;
+        // BolaLinea no se puede recalcular con precisión si queda algún otro
+        // cartón válido (no guardamos en qué bola cantó cada uno por
+        // separado); se deja como estaba salvo que ya no quede ninguno.
+        if (_cartonesLinea.Count == 0) _dto.BolaLinea = null;
+        _lineaTentativa = null;
+    }
+
+    // Canto de bingo: *H<cartón>#, SIN dígito de tipo (a diferencia de D) —
+    // confirmado: *H2264# (partida 1) == ticket "2264-B" directo, sin
+    // transformar. *H# sin valor (marcador de "entrando en fase de bingo",
+    // según Jaume) ya no hace nada aquí porque ParseInt("") devuelve 0 y
+    // carton<=0 corta antes de tocar el DTO.
+    private void AplicarCantoBingo(string valor) {
         int carton = ParseInt(valor);
         if (carton <= 0) return;
 
-        if (esLinea) {
-            _dto.CartLinea = carton.ToString(CultureInfo.InvariantCulture);
-            _dto.BolaLinea = _extracciones;
-            _dto.NumLineas = (_dto.NumLineas ?? 0) + 1;
-        }
-        else {
-            _dto.CartBingo = carton.ToString(CultureInfo.InvariantCulture);
-            _dto.BolaBingo = _extracciones;
-            _dto.NumBingos = (_dto.NumBingos ?? 0) + 1;
-        }
-        tentativo = carton;
+        _cartonesBingo.Add(carton);
+        _dto.CartBingo = string.Join(",", _cartonesBingo);
+        _dto.BolaBingo = _extracciones;
+        _dto.NumBingos = _cartonesBingo.Count;
+        _bingoTentativo = carton;
     }
 
-    private void RevertirCantoIncorrecto(string valor, ref int? tentativo, bool esLinea) {
+    private void RevertirCantoBingo(string valor) {
         int carton = ParseInt(valor);
-        if (tentativo == null || tentativo.Value != carton) return;
+        if (_bingoTentativo == null || _bingoTentativo.Value != carton) return;
 
-        if (esLinea) {
-            _dto.CartLinea = null;
-            _dto.BolaLinea = null;
-            _dto.NumLineas = Math.Max(0, (_dto.NumLineas ?? 1) - 1);
-        }
-        else {
-            _dto.CartBingo = null;
-            _dto.BolaBingo = null;
-            _dto.NumBingos = Math.Max(0, (_dto.NumBingos ?? 1) - 1);
-        }
-        tentativo = null;
+        _cartonesBingo.Remove(carton);
+        _dto.CartBingo = _cartonesBingo.Count > 0 ? string.Join(",", _cartonesBingo) : null;
+        _dto.NumBingos = _cartonesBingo.Count;
+        if (_cartonesBingo.Count == 0) _dto.BolaBingo = null;
+        _bingoTentativo = null;
     }
+
+    private static int QuitarDigitoDeTipo(string valor) =>
+        valor.Length < 2 ? 0 : ParseInt(valor[1..]);
 
     // Evento 'e': snapshot binario del estado actual (ver EstadoPartidaDecoder)
     // — pensado para que un receptor que se conecta a mitad de partida sepa
@@ -150,6 +311,15 @@ public class PartidaAccumulator {
     // (por su *E# real), para no tocar el orden real ya registrado; las
     // nuevas se añaden en orden numérico ascendente, que es lo único que este
     // snapshot puede dar (no dice en qué orden salieron).
+    //
+    // Nota 2026-10-14: no se ha podido validar todavía el formato de bits
+    // contra una trama real — al reconstruir los bytes originales desde la
+    // captura de texto ("7 partidas Metronia.txt") el primer byte no coincide
+    // con el marcador esperado (0x8D/0x8E), posiblemente por la
+    // recodificación Windows-1252 que sufrió esa captura antes de guardarse
+    // como .txt. Mientras no se confirme con una captura binaria o una
+    // prueba en vivo, es posible que Decode() esté devolviendo null para
+    // TODAS las tramas 'e' reales (ver el aviso que registra más abajo).
     private void AplicarEstadoPartida(string payload) {
         var resultado = EstadoPartidaDecoder.Decode(payload);
         if (resultado == null) {
@@ -209,6 +379,30 @@ public class PartidaAccumulator {
         }
         _siguientePartidaDia++;
 
+        // Letra de edición (ver AplicarLetraSerie): se aplica aquí, ya con
+        // Serie1/Serie2 definitivos, en vez de al llegar el evento J.
+        if (_letraSerie != null) {
+            _dto.Letra1 = _letraSerie;
+            if (_dto.Serie2.HasValue) _dto.Letra2 = _letraSerie;
+        }
+
+        // Precio y los premios (L, B, p, A — los códigos de PremioCodeMap)
+        // llegan en céntimos, no en euros: confirmado céntimo a céntimo
+        // contra los tickets reales (*C200# == ticket "PRECIO: 2,00",
+        // *L9000# == "LINEA: 90,00", etc. en las 7 partidas). Se convierten
+        // aquí, al final, usando el número de decimales del evento K (K2 en
+        // las 7 partidas reales; si no llegara K se asume 2, lo habitual en
+        // euros) — así da igual en qué orden lleguen K y los importes.
+        // Caja (evento Q) NO se toca: Q no aparece en ninguna de las 7
+        // partidas reales, así que no hay forma de confirmar si también va
+        // en céntimos; se deja como estaba hasta tener evidencia real.
+        int decimales = _dto.NumDecimales ?? 2;
+        decimal divisor = (decimal)Math.Pow(10, decimales);
+        _dto.Precio /= divisor;
+        for (int i = 0; i < _dto.Premios.Length; i++) {
+            if (_dto.Premios[i].HasValue) _dto.Premios[i] = _dto.Premios[i]!.Value / divisor;
+        }
+
         if (_recuperadaParcialmente) {
             // RECLAMACION es VARCHAR(64) en Firebird (HISTORICO) — un texto más
             // largo provoca "string right truncation" y pierde la partida entera
@@ -227,6 +421,9 @@ public class PartidaAccumulator {
         _dto = new HistoricoDTO();
         _bolas.Clear();
         _extracciones = 0;
+        _letraSerie = null;
+        _cartonesLinea.Clear();
+        _cartonesBingo.Clear();
         _lineaTentativa = null;
         _bingoTentativo = null;
         Array.Clear(_bolasConocidas);
@@ -238,4 +435,7 @@ public class PartidaAccumulator {
 
     private static int ParseInt(string value) =>
         int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result) ? result : 0;
+
+    private static int? ParseIntOrNull(string value) =>
+        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result) ? result : null;
 }
