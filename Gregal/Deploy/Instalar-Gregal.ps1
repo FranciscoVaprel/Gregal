@@ -29,19 +29,47 @@ function Read-WithDefault($prompt, $default) {
     return $value
 }
 
-# Reemplaza el valor de una propiedad JSON escalar ("clave": valor) preservando
-# el resto del fichero (incluidos los comentarios "//" que tiene appsettings.json).
-# No usamos ConvertFrom-Json/ConvertTo-Json porque eso no tolera comentarios
-# y reescribiría el fichero entero perdiendo el formato.
+# ── Edición de appsettings.json con ámbito de sección ───────────────────
+# No usamos ConvertFrom-Json/ConvertTo-Json porque eso no tolera los
+# comentarios "//" del fichero y lo reescribiría entero perdiendo el formato.
+#
+# appsettings.json tiene DOS claves "ComPort" (una en NetworkSettings, otra en
+# TagProtocolSettings: son puertos serie distintos a propósito, ver CLAUDE.md).
+# Un reemplazo global por nombre de clave las tocaría las dos a la vez, así
+# que toda edición va acotada a la sección correspondiente.
+function Get-JsonSectionRange([string]$Content, [string]$Section) {
+    $inicio = [System.Text.RegularExpressions.Regex]::Match($Content, "(?m)^\s*""$Section""\s*:\s*\{")
+    if (-not $inicio.Success) { throw "No se encontró la sección '$Section' en appsettings.json." }
+
+    $llaveApertura = $inicio.Index + $inicio.Length - 1
+    $profundidad = 0
+    for ($i = $llaveApertura; $i -lt $Content.Length; $i++) {
+        if ($Content[$i] -eq '{') { $profundidad++ }
+        elseif ($Content[$i] -eq '}') {
+            $profundidad--
+            if ($profundidad -eq 0) { return @{ Inicio = $llaveApertura; Fin = $i } }
+        }
+    }
+    throw "No se encontró el cierre de la sección '$Section' en appsettings.json."
+}
+
 function Set-JsonScalar([string]$Content, [string]$Key, [string]$RawValue) {
     $pattern = "(?m)^(\s*""$Key""\s*:\s*)(?:""[^""]*""|\[[^\]]*\]|[^,\r\n]+)"
     $evaluator = { param($m) $m.Groups[1].Value + $RawValue }
     return [System.Text.RegularExpressions.Regex]::Replace($Content, $pattern, $evaluator)
 }
 
-function Set-JsonString([string]$Content, [string]$Key, [string]$Value) {
+function Set-JsonScalarInSection([string]$Content, [string]$Section, [string]$Key, [string]$RawValue) {
+    $rango = Get-JsonSectionRange $Content $Section
+    $antes = $Content.Substring(0, $rango.Inicio)
+    $dentro = $Content.Substring($rango.Inicio, $rango.Fin - $rango.Inicio + 1)
+    $despues = $Content.Substring($rango.Fin + 1)
+    return $antes + (Set-JsonScalar $dentro $Key $RawValue) + $despues
+}
+
+function Set-JsonStringInSection([string]$Content, [string]$Section, [string]$Key, [string]$Value) {
     $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
-    return Set-JsonScalar $Content $Key "`"$escaped`""
+    return Set-JsonScalarInSection $Content $Section $Key "`"$escaped`""
 }
 
 # ── Comprobaciones previas ──────────────────────────────────────────────
@@ -70,15 +98,35 @@ else {
     if ($continuar -notmatch "^[sS]") { exit 1 }
 }
 
-# ── Datos de configuración de esta sala ─────────────────────────────────
-Write-Step "Configuración de red y puerto serie para esta sala"
+# ── Protocolo a usar en esta sala ────────────────────────────────────────
+Write-Step "Protocolo de esta sala"
+Write-Host "  1) Protocolo de eventos 'tag' por RS232 (*CODIGO<valor>#) - RECOMENDADO, es el que se ha probado"
+Write-Host "  2) Protocolo JSON/CSV antiguo, por TCP y/o RS232"
+Write-Host "  3) Los dos a la vez (puertos COM distintos)"
+$opcionProtocolo = Read-WithDefault "Elige una opción" "1"
 
-$ServiceName = Read-WithDefault "Nombre del servicio de Windows" "GregalReceiverService"
-$TcpPort = Read-WithDefault "Puerto TCP" "8080"
-$TcpAddress = Read-WithDefault "Dirección de escucha TCP (0.0.0.0 = todas las interfaces)" "0.0.0.0"
-$AllowedIpsRaw = Read-WithDefault "IPs autorizadas por TCP, separadas por coma (vacío = sin restricción)" "127.0.0.1"
-$ComPort = Read-WithDefault "Puerto COM del hardware serie de esta sala" "COM8"
-$Handshake = Read-WithDefault "Control de flujo serie (None / RequestToSend)" "None"
+$usarTag = $opcionProtocolo -in @("1", "3")
+$usarJsonCsv = $opcionProtocolo -in @("2", "3")
+
+if ($usarTag) {
+    Write-Step "Configuración del protocolo de eventos (tag)"
+    $TagComPort = Read-WithDefault "Puerto COM donde está conectado el hardware de la sala" "COM9"
+    Write-Host "CodSala/CodConc identifican esta sala en Firebird (columnas COD_SALA/COD_CONC de HISTORICO)."
+    Write-Host "Tienen que ser valores reales y distintos de 0, o Gregal rechazará guardar las partidas."
+    $CodSala = Read-WithDefault "Código de sala (CodSala)" "1"
+    $CodConc = Read-WithDefault "Código de concesión (CodConc)" "1"
+}
+
+if ($usarJsonCsv) {
+    Write-Step "Configuración del protocolo JSON/CSV (red y puerto serie)"
+    $ServiceName = Read-WithDefault "Nombre del servicio de Windows" "GregalReceiverService"
+    $TcpPort = Read-WithDefault "Puerto TCP" "8080"
+    $TcpAddress = Read-WithDefault "Dirección de escucha TCP (0.0.0.0 = todas las interfaces)" "0.0.0.0"
+    $AllowedIpsRaw = Read-WithDefault "IPs autorizadas por TCP, separadas por coma (vacío = sin restricción)" "127.0.0.1"
+    $NetComPort = Read-WithDefault "Puerto COM de este protocolo (distinto del de arriba si usas los dos)" "COM8"
+    $Handshake = Read-WithDefault "Control de flujo serie (None / RequestToSend)" "None"
+}
+if (-not $ServiceName) { $ServiceName = Read-WithDefault "Nombre del servicio de Windows" "GregalReceiverService" }
 
 Write-Step "Base de datos Firebird"
 $DefaultDbPath = Join-Path $InstallDir "Data\GREGAL.FDB"
@@ -104,14 +152,28 @@ Write-Step "Actualizando appsettings.json"
 
 $content = [System.IO.File]::ReadAllText($AppSettingsPath)
 
-$allowedIpsArray = ($AllowedIpsRaw -split ",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-$allowedIpsJson = "[ " + (($allowedIpsArray | ForEach-Object { "`"$_`"" }) -join ", ") + " ]"
+$tagEnabledValue = "false"
+if ($usarTag) { $tagEnabledValue = "true" }
+$content = Set-JsonScalarInSection $content "TagProtocolSettings" "Enabled" $tagEnabledValue
+if ($usarTag) {
+    $content = Set-JsonStringInSection $content "TagProtocolSettings" "ComPort" $TagComPort
+    $content = Set-JsonScalarInSection $content "TagProtocolSettings" "DefaultCodSala" $CodSala
+    $content = Set-JsonScalarInSection $content "TagProtocolSettings" "DefaultCodConc" $CodConc
+}
 
-$content = Set-JsonScalar $content "TcpPort" $TcpPort
-$content = Set-JsonString $content "TcpAddress" $TcpAddress
-$content = Set-JsonScalar $content "AllowedIps" $allowedIpsJson
-$content = Set-JsonString $content "ComPort" $ComPort
-$content = Set-JsonString $content "SerialHandshake" $Handshake
+$networkEnabledValue = "false"
+if ($usarJsonCsv) { $networkEnabledValue = "true" }
+$content = Set-JsonScalarInSection $content "NetworkSettings" "Enabled" $networkEnabledValue
+if ($usarJsonCsv) {
+    $allowedIpsArray = ($AllowedIpsRaw -split ",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+    $allowedIpsJson = "[ " + (($allowedIpsArray | ForEach-Object { "`"$_`"" }) -join ", ") + " ]"
+
+    $content = Set-JsonScalarInSection $content "NetworkSettings" "TcpPort" $TcpPort
+    $content = Set-JsonStringInSection $content "NetworkSettings" "TcpAddress" $TcpAddress
+    $content = Set-JsonScalarInSection $content "NetworkSettings" "AllowedIps" $allowedIpsJson
+    $content = Set-JsonStringInSection $content "NetworkSettings" "ComPort" $NetComPort
+    $content = Set-JsonStringInSection $content "NetworkSettings" "SerialHandshake" $Handshake
+}
 
 # Sustituye solo el segmento Database=...; dentro de la cadena de conexión de Firebird,
 # manteniendo usuario/contraseña/servidor/puerto tal como estén.
@@ -136,16 +198,21 @@ if ($existing) {
 & sc.exe create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "Gregal - Receptor de Bingo" | Out-Null
 Write-Ok "Servicio '$ServiceName' creado."
 
-# ── Regla de firewall para el puerto TCP ─────────────────────────────────
-Write-Step "Configurando regla de firewall para el puerto TCP $TcpPort"
+# ── Regla de firewall para el puerto TCP (solo si se usa el protocolo JSON/CSV) ──
+if ($usarJsonCsv) {
+    Write-Step "Configurando regla de firewall para el puerto TCP $TcpPort"
 
-$fwRuleName = "Gregal TCP $TcpPort"
-if (-not (Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName $fwRuleName -Direction Inbound -Protocol TCP -LocalPort $TcpPort -Action Allow | Out-Null
-    Write-Ok "Regla de firewall creada."
+    $fwRuleName = "Gregal TCP $TcpPort"
+    if (-not (Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -DisplayName $fwRuleName -Direction Inbound -Protocol TCP -LocalPort $TcpPort -Action Allow | Out-Null
+        Write-Ok "Regla de firewall creada."
+    }
+    else {
+        Write-Ok "La regla de firewall ya existía."
+    }
 }
 else {
-    Write-Ok "La regla de firewall ya existía."
+    Write-Ok "Solo protocolo tag por serie: no hace falta abrir ningún puerto en el firewall."
 }
 
 # ── Arrancar el servicio ──────────────────────────────────────────────────
@@ -166,5 +233,10 @@ else {
 }
 
 Write-Step "Instalación terminada"
-Write-Host "Revisa el log anterior: debería decir 'Servidor TCP iniciado' y 'Puerto serie abierto'."
-Write-Host "Si el puerto serie falla, comprueba que ComPort ('$ComPort') es el correcto en este PC y que ningún otro programa lo tiene abierto."
+if ($usarTag) {
+    Write-Host "Revisa el log anterior: debería decir 'Puerto serie (protocolo tag) abierto: $TagComPort'."
+}
+if ($usarJsonCsv) {
+    Write-Host "Revisa el log anterior: debería decir 'Servidor TCP iniciado' y, si usas su puerto serie, 'Puerto serie abierto'."
+}
+Write-Host "Si un puerto serie falla, comprueba que el ComPort configurado es el correcto en este PC y que ningún otro programa lo tiene abierto."
