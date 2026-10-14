@@ -36,19 +36,22 @@ public class TagProtocolSettings {
     public string FallbackFilePath { get; set; } = "logs/historico_pendientes_tag.jsonl";
 
     // Letra de código del protocolo -> índice 0-based en HistoricoDTO.Premios
-    // (Premios[i] corresponde a la columna PREMIO{i+1}). L, B, A y p están
-    // confirmados contra tickets reales de sala (2026-10-14, "7 partidas
-    // Metronia"): L=línea, B=bingo, A=prima, p=línea plus, todos en céntimos.
-    // G, S y R quedan como estaban (sin confirmar, no aparecieron en esa
-    // captura); se ajusta aquí sin tocar código si hiciera falta.
+    // (Premios[i] corresponde a la columna PREMIO{i+1}). L, B, p, A y M están
+    // confirmados por el operador de la sala (2026-10-14): PREMIO1=línea (L),
+    // PREMIO2=bingo (B), PREMIO5=línea plus (p), PREMIO6=prima (A),
+    // PREMIO7=bola tope de prima (M) — todos los importes en céntimos excepto
+    // M, que es un número de bola. G, S y R quedan en huecos libres (sin
+    // confirmar, no aparecieron en la captura real); se ajusta aquí sin tocar
+    // código si hiciera falta.
     public Dictionary<string, int> PremioCodeMap { get; set; } = new() {
         ["L"] = 0,
         ["B"] = 1,
         ["G"] = 2,
-        ["A"] = 3,
-        ["S"] = 4,
-        ["R"] = 5,
-        ["p"] = 6
+        ["S"] = 3,
+        ["p"] = 4,
+        ["A"] = 5,
+        ["M"] = 6,
+        ["R"] = 7
     };
 
     // Código de longitud de serie (evento J) -> letra de edición del cartón

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using Gregal.Config;
 using Gregal.Models;
 using Microsoft.Extensions.Logging;
@@ -17,23 +16,31 @@ namespace Gregal.Parsing;
 // una captura real de 7 partidas de la sala Metronia ("7 partidas
 // Metronia.txt") y los tickets que la propia máquina imprime al final de cada
 // partida (que incluyen los mismos valores ya calculados, en claro). Los
-// campos K, T, L, B, C, P, U, V, X, J, p, A, D y H están confirmados así;
-// quedan dos cosas sin confirmar (ver comentarios en Aplicar()): el código
-// 'º' (aparece una vez por cada bola, significado desconocido) y si 'X'
-// puede significar también "borrar una bola" a mitad de partida (lo dice
-// Jaume de memoria, pero no apareció ni una vez en las 7 partidas capturadas).
+// campos K, T, L, B, C, P, U, V, X, J, p, A, M, D y H están confirmados así.
+// Confirmado también por el operador de la sala (2026-10-14, segunda ronda):
+// 'º' no corresponde a ningún campo de HISTORICO (se ignora a propósito, no
+// por desconocimiento), y "las bolas se borran con *X#" de la primera
+// explicación era un error de transcripción — el código real es 'Z', distinto
+// de 'X' (que siempre es el número de serie, sin ambigüedad). 'Z' no apareció
+// ni una vez en las 7 partidas capturadas (ninguna tuvo que corregir una
+// bola), así que su implementación no se ha podido probar contra tráfico real.
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
 
     private HistoricoDTO _dto = new();
-    private readonly StringBuilder _bolas = new();
-    private int _extracciones;
+
+    // Bolas salidas, en el orden real de llegada (mezcla de *E# en tiempo
+    // real y, si se reconecta a mitad de partida, las recuperadas vía el
+    // snapshot 'e' — ver AplicarEstadoPartida). Lista en vez de
+    // string/StringBuilder porque el evento Z (ver Aplicar) puede quitar una
+    // bola ya registrada, no solo añadir.
+    private readonly List<int> _bolasOrden = new();
 
     // Qué números de bola (1-90) ya sabemos que han salido, vengan de un *E#
     // en tiempo real o de un evento 'e' (estado de partida). Hace falta aparte
-    // de _bolas/_extracciones para poder fusionar un snapshot 'e' sin duplicar
-    // ni perder el orden real ya conocido.
+    // de _bolasOrden para poder fusionar un snapshot 'e' sin duplicar ni
+    // perder el orden real ya conocido.
     private readonly bool[] _bolasConocidas = new bool[90];
 
     // Se pone a true si alguna bola se incorporó vía un evento 'e' en vez de
@@ -139,31 +146,28 @@ public class PartidaAccumulator {
                 _dto.Al1 = ParseInt(evt.Value);
                 break;
             case 'X':
+                // Confirmado por el operador de la sala: X es SIEMPRE el
+                // número de serie, nunca "borrar una bola" (eso es Z, ver
+                // más abajo) — ya no hay ambigüedad entre los dos casos.
                 AplicarSerie(evt.Value);
                 break;
             case 'J':
                 AplicarLetraSerie(evt.Value);
                 break;
-            case 'M':
-                // "BT PRIMA" (bola tope de prima) en el ticket — confirmado
-                // exacto (*M55# == ticket "BT PRIMA: 55"), pero HISTORICO no
-                // tiene hoy una columna para guardarlo. Se deja en el log
-                // para no perder el dato mientras se decide si se añade una
-                // columna nueva (ver Docs/Migraciones/ para el procedimiento
-                // ya usado con BOLAS).
-                _logger.LogInformation(
-                    "Bola tope de prima (evento M) recibida: {valor}. No se persiste todavía (falta columna en HISTORICO).",
-                    evt.Value);
+            case 'Z':
+                // Borra una bola ya registrada (corrección de una lectura
+                // errónea del hardware). Confirmado que existe y que el
+                // código correcto es 'Z', no 'X'; no apareció en las 7
+                // partidas capturadas así que esta rama no se ha probado
+                // contra tráfico real.
+                EliminarBola(evt.Value);
                 break;
 
             case 'E': {
                 int bola = ParseInt(evt.Value);
-                _extracciones++;
-                if (_bolas.Length > 0) _bolas.Append(',');
-                _bolas.Append(evt.Value);
+                _bolasOrden.Add(bola);
                 if (bola is >= 1 and <= 90) _bolasConocidas[bola - 1] = true;
-                _dto.Extracciones = _extracciones;
-                _dto.Bolas = _bolas.ToString();
+                ActualizarBolasDto();
                 break;
             }
             case 'e':
@@ -183,17 +187,14 @@ public class PartidaAccumulator {
                 RevertirCantoBingo(evt.Value);
                 break;
 
-            // 'f' (heartbeat "entre partidas") e 'Y' (entrando en
-            // comprobación) están confirmados pero no tienen efecto en el
-            // DTO: no hay campo equivalente y, sobre todo 'f', se repite una
-            // vez por segundo — tratarlos como "no mapeado" inundaría el log.
-            // 'º' aparece exactamente una vez por cada *E# (393 veces en las
-            // 7 partidas = mismas 393 bolas), pero su valor no se corresponde
-            // de forma consistente con el momento de la línea ni con ningún
-            // otro evento que hayamos podido identificar — significado
-            // todavía desconocido, pendiente de preguntarle a Jaume. Se
-            // ignora por ahora por el mismo motivo que 'f' (saldría una vez
-            // por bola).
+            // 'f' (heartbeat "entre partidas"), 'Y' (entrando en
+            // comprobación) y 'º' (uno por cada *E#) están confirmados pero
+            // no tienen efecto en el DTO — el operador de la sala confirmó
+            // que 'º' en concreto no corresponde a ningún campo de HISTORICO,
+            // así que ignorarlo es la respuesta definitiva, no un parche
+            // mientras se investiga. Tratarlos como "no mapeado" inundaría el
+            // log sin motivo (sobre todo 'f' y 'º', que van una vez por
+            // segundo/por bola).
             case 'f':
             case 'Y':
             case 'º':
@@ -207,22 +208,36 @@ public class PartidaAccumulator {
 
     // Evento X: número de serie de los cartones, con posible empalme (p.ej.
     // "00179689,00179690" si una serie no basta para los cartones vendidos).
-    // Confirmado con un ticket real (partida 4, dos líneas de SERIE/S).
-    //
-    // Nota sin confirmar: según Jaume, "las bolas ... se borran con *X..#"
-    // — es decir, X podría significar también "elimina esta bola" a mitad de
-    // partida. En las 7 partidas capturadas X solo apareció una vez por
-    // partida, siempre al principio como número de serie, nunca durante el
-    // sorteo. Mientras no se confirme cómo distinguir un caso del otro, aquí
-    // SIEMPRE se interpreta como número de serie — si el hardware real llega
-    // a mandar un X de borrado a mitad de partida, hoy se interpretaría mal
-    // (pisaría Serie1/Serie2 con el número de la bola a borrar).
+    // Confirmado con un ticket real (partida 4, dos líneas de SERIE/S) y
+    // confirmado por el operador de la sala que X es siempre este campo
+    // (el borrado de bolas es un código distinto, 'Z' — ver EliminarBola).
     private void AplicarSerie(string valor) {
         string[] partes = valor.Split(',');
         _dto.Serie1 = ParseIntOrNull(partes[0]);
         if (partes.Length > 1) {
             _dto.Serie2 = ParseIntOrNull(partes[1]);
         }
+    }
+
+    // Evento Z: elimina una bola ya marcada como salida (corrección de una
+    // lectura errónea del hardware). Sin tráfico real que lo confirme, se
+    // interpreta de la forma más simple posible: quita esa bola de la lista
+    // y de _bolasConocidas como si nunca hubiera llegado. Si la bola no
+    // estaba registrada (número fuera de rango o que no habíamos visto), no
+    // hace nada — más seguro que corromper el estado con un valor inesperado.
+    private void EliminarBola(string valor) {
+        int bola = ParseInt(valor);
+        if (bola is < 1 or > 90) return;
+        if (!_bolasConocidas[bola - 1]) return;
+
+        _bolasOrden.Remove(bola);
+        _bolasConocidas[bola - 1] = false;
+        ActualizarBolasDto();
+    }
+
+    private void ActualizarBolasDto() {
+        _dto.Bolas = _bolasOrden.Count > 0 ? string.Join(",", _bolasOrden) : null;
+        _dto.Extracciones = _bolasOrden.Count;
     }
 
     // Evento J: código de longitud de serie -> letra de edición (ver
@@ -256,7 +271,7 @@ public class PartidaAccumulator {
 
         _cartonesLinea.Add(carton);
         _dto.CartLinea = string.Join(",", _cartonesLinea);
-        _dto.BolaLinea = _extracciones;
+        _dto.BolaLinea = _bolasOrden.Count;
         _dto.NumLineas = _cartonesLinea.Count;
         _lineaTentativa = carton;
     }
@@ -286,7 +301,7 @@ public class PartidaAccumulator {
 
         _cartonesBingo.Add(carton);
         _dto.CartBingo = string.Join(",", _cartonesBingo);
-        _dto.BolaBingo = _extracciones;
+        _dto.BolaBingo = _bolasOrden.Count;
         _dto.NumBingos = _cartonesBingo.Count;
         _bingoTentativo = carton;
     }
@@ -333,15 +348,12 @@ public class PartidaAccumulator {
             if (_bolasConocidas[numero - 1]) continue; // ya la teníamos por su *E# real
 
             _bolasConocidas[numero - 1] = true;
-            _extracciones++;
-            if (_bolas.Length > 0) _bolas.Append(',');
-            _bolas.Append(numero.ToString(CultureInfo.InvariantCulture));
+            _bolasOrden.Add(numero);
             huboBolasNuevas = true;
         }
 
         if (huboBolasNuevas) {
-            _dto.Extracciones = _extracciones;
-            _dto.Bolas = _bolas.ToString();
+            ActualizarBolasDto();
             _recuperadaParcialmente = true;
             _logger.LogInformation("Partida (protocolo tag) enganchada a mitad vía evento 'e': se recuperaron bolas anteriores a la conexión (orden aproximado).");
         }
@@ -386,20 +398,26 @@ public class PartidaAccumulator {
             if (_dto.Serie2.HasValue) _dto.Letra2 = _letraSerie;
         }
 
-        // Precio y los premios (L, B, p, A — los códigos de PremioCodeMap)
-        // llegan en céntimos, no en euros: confirmado céntimo a céntimo
-        // contra los tickets reales (*C200# == ticket "PRECIO: 2,00",
-        // *L9000# == "LINEA: 90,00", etc. en las 7 partidas). Se convierten
-        // aquí, al final, usando el número de decimales del evento K (K2 en
-        // las 7 partidas reales; si no llegara K se asume 2, lo habitual en
-        // euros) — así da igual en qué orden lleguen K y los importes.
-        // Caja (evento Q) NO se toca: Q no aparece en ninguna de las 7
-        // partidas reales, así que no hay forma de confirmar si también va
-        // en céntimos; se deja como estaba hasta tener evidencia real.
+        // Precio y los premios monetarios (L, B, p, A — los códigos de
+        // PremioCodeMap) llegan en céntimos, no en euros: confirmado céntimo
+        // a céntimo contra los tickets reales (*C200# == ticket
+        // "PRECIO: 2,00", *L9000# == "LINEA: 90,00", etc. en las 7 partidas).
+        // Se convierten aquí, al final, usando el número de decimales del
+        // evento K (K2 en las 7 partidas reales; si no llegara K se asume 2,
+        // lo habitual en euros) — así da igual en qué orden lleguen K y los
+        // importes. Caja (evento Q) NO se toca: Q no aparece en ninguna de
+        // las 7 partidas reales, así que no hay forma de confirmar si también
+        // va en céntimos; se deja como estaba hasta tener evidencia real.
+        //
+        // M (bola tope de prima, PremioCodeMap["M"]) se queda en Premios pero
+        // es un número de bola, no un importe — se excluye explícitamente de
+        // la conversión para no dividirlo por error.
         int decimales = _dto.NumDecimales ?? 2;
         decimal divisor = (decimal)Math.Pow(10, decimales);
         _dto.Precio /= divisor;
+        int? indiceBolaTopePrima = _settings.CurrentValue.PremioCodeMap.TryGetValue("M", out int indiceM) ? indiceM : null;
         for (int i = 0; i < _dto.Premios.Length; i++) {
+            if (i == indiceBolaTopePrima) continue;
             if (_dto.Premios[i].HasValue) _dto.Premios[i] = _dto.Premios[i]!.Value / divisor;
         }
 
@@ -419,8 +437,7 @@ public class PartidaAccumulator {
 
     private void Reset() {
         _dto = new HistoricoDTO();
-        _bolas.Clear();
-        _extracciones = 0;
+        _bolasOrden.Clear();
         _letraSerie = null;
         _cartonesLinea.Clear();
         _cartonesBingo.Clear();

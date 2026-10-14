@@ -364,4 +364,54 @@ public class PartidaAccumulatorTests {
         Assert.Equal("1", dto!.Bolas); // el evento 'e' corrupto no afectó a nada
         Assert.Null(dto.Reclamacion);
     }
+
+    [Fact]
+    public void Feed_ConEventoM_GuardaLaBolaTopeDePrimaComoPremio7SinDividirPorCentimos() {
+        // Confirmado por el operador de la sala (2026-10-14): M es la "bola
+        // tope de prima" y se guarda como PREMIO7 (Premios[6]) — a diferencia
+        // del resto de premios de PremioCodeMap, es un número de bola, no un
+        // importe en céntimos, así que no debe dividirse al finalizar.
+        var acumulador = CreateAccumulator();
+        var settings = new TagProtocolSettings();
+
+        acumulador.Feed(EventoDe("*K2#"));
+        acumulador.Feed(EventoDe("*M55#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal(55m, dto!.Premios[settings.PremioCodeMap["M"]]);
+    }
+
+    [Fact]
+    public void Feed_ConEventoZ_BorraUnaBolaYaRegistrada() {
+        // Confirmado por el operador de la sala: el borrado de una bola es el
+        // código 'Z' (la documentación original decía 'X' por error de
+        // transcripción). Sin tráfico real que lo confirme, se prueba aquí
+        // con el comportamiento más simple: quita la bola de la lista como si
+        // nunca hubiera llegado.
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E5#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*E15#"));
+        acumulador.Feed(EventoDe("*Z10#")); // bola 10 mal leída, se borra
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("5,15", dto!.Bolas);
+        Assert.Equal(2, dto.Extracciones);
+    }
+
+    [Fact]
+    public void Feed_ConEventoZDeUnaBolaNoRegistrada_NoHaceNada() {
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E5#"));
+        acumulador.Feed(EventoDe("*Z77#")); // nunca llegó la bola 77
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("5", dto!.Bolas);
+        Assert.Equal(1, dto.Extracciones);
+    }
 }
