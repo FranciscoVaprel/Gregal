@@ -103,10 +103,12 @@ public class PartidaAccumulatorTests {
 
         var dto = FeedEjemplo(CreateAccumulator(settings));
 
-        // Céntimos (K2) -> euros, igual que Precio.
+        // Céntimos (K2) -> euros, igual que Precio. R ya no se mapea (el
+        // operador de la sala confirmó "R ignorar" el 2026-10-14, tercera
+        // ronda) aunque EjemploPartida todavía incluye "*R9165#" de cuando
+        // se diseñó este test sin datos reales.
         Assert.Equal(5.88m, dto.Premios[settings.PremioCodeMap["L"]]);
         Assert.Equal(7.69m, dto.Premios[settings.PremioCodeMap["B"]]);
-        Assert.Equal(91.65m, dto.Premios[settings.PremioCodeMap["R"]]);
     }
 
     [Fact]
@@ -413,5 +415,68 @@ public class PartidaAccumulatorTests {
         Assert.NotNull(dto);
         Assert.Equal("5", dto!.Bolas);
         Assert.Equal(1, dto.Extracciones);
+    }
+
+    // Variante de protocolo confirmada por el operador de la sala (2026-10-14,
+    // tercera ronda): un mismo código *Y<cartón># para línea y bingo, sin
+    // dígito de tipo, distinguido por si ya llegó el *H# que marca la fase
+    // de bingo. Convive con *D#/*H# (confirmado antes con tickets reales).
+
+    [Fact]
+    public void Feed_ConEventoYAntesDeLaFaseDeBingo_SeInterpretaComoLinea() {
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*Y2363#")); // todavía no ha llegado *H#
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("2363", dto!.CartLinea);
+        Assert.Equal(1, dto.NumLineas);
+        Assert.Null(dto.CartBingo);
+    }
+
+    [Fact]
+    public void Feed_ConEventoYDespuesDeLaFaseDeBingo_SeInterpretaComoBingo() {
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*Y2363#")); // línea
+        acumulador.Feed(EventoDe("*H#"));     // entra en fase de bingo
+        acumulador.Feed(EventoDe("*E20#"));
+        acumulador.Feed(EventoDe("*Y2264#")); // ahora es bingo
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("2363", dto!.CartLinea);
+        Assert.Equal("2264", dto.CartBingo);
+        Assert.Equal(1, dto.NumBingos);
+    }
+
+    [Fact]
+    public void Feed_ConEventoYSinValor_NoTieneEfectoEnElDto() {
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*Y#")); // "entrando en comprobación"
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Null(dto!.CartLinea);
+        Assert.Null(dto.CartBingo);
+    }
+
+    [Fact]
+    public void Feed_ConJConBasuraTrasLosCuatroDigitos_IgnoraElResto() {
+        // Confirmado por el operador: J puede llevar basura detrás de los 4
+        // dígitos de longitud de serie, p.ej. "386400001&BIPLUSE1.255".
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*X179689#"));
+        acumulador.Feed(EventoDe("*J386400001&BIPLUSE1.255#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal("EB", dto!.Letra1);
     }
 }

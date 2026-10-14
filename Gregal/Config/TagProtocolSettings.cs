@@ -36,22 +36,24 @@ public class TagProtocolSettings {
     public string FallbackFilePath { get; set; } = "logs/historico_pendientes_tag.jsonl";
 
     // Letra de código del protocolo -> índice 0-based en HistoricoDTO.Premios
-    // (Premios[i] corresponde a la columna PREMIO{i+1}). L, B, p, A y M están
-    // confirmados por el operador de la sala (2026-10-14): PREMIO1=línea (L),
-    // PREMIO2=bingo (B), PREMIO5=línea plus (p), PREMIO6=prima (A),
-    // PREMIO7=bola tope de prima (M) — todos los importes en céntimos excepto
-    // M, que es un número de bola. G, S y R quedan en huecos libres (sin
-    // confirmar, no aparecieron en la captura real); se ajusta aquí sin tocar
-    // código si hiciera falta.
+    // (Premios[i] corresponde a la columna PREMIO{i+1}). L y B (línea y
+    // bingo) están confirmados por el operador de la sala. G, S y R ya no
+    // están aquí: confirmado (2026-10-14, tercera ronda) que se ignoran
+    // explícitamente en PartidaAccumulator.Aplicar, igual que 'z'/'y'.
+    //
+    // p (línea plus), A (prima) y M (bola tope de prima) están EN DUDA: una
+    // primera confirmación los daba como PREMIO5/6/7 respectivamente
+    // (contrastado contra tickets reales), pero un mensaje posterior del
+    // mismo operador dice literalmente "ignorar todo A y todo M" y "p
+    // ignorar", mostrando tráfico con A/M repetidos y a cero/basura. Se
+    // mantienen aquí, mapeados, a la espera de que se aclare la contradicción
+    // — ver PartidaAccumulator.cs y la conversación del 2026-10-14.
     public Dictionary<string, int> PremioCodeMap { get; set; } = new() {
         ["L"] = 0,
         ["B"] = 1,
-        ["G"] = 2,
-        ["S"] = 3,
         ["p"] = 4,
         ["A"] = 5,
-        ["M"] = 6,
-        ["R"] = 7
+        ["M"] = 6
     };
 
     // Código de longitud de serie (evento J) -> letra de edición del cartón

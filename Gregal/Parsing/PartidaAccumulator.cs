@@ -90,6 +90,15 @@ public class PartidaAccumulator {
     private int? _lineaTentativa;
     private int? _bingoTentativo;
 
+    // Se pone a true al recibir el primer *H# sin valor ("jugando a bingo",
+    // confirmado en las dos descripciones del protocolo recibidas). Hace
+    // falta para distinguir las dos formas del canto que ha descrito el
+    // operador de la sala: *D<tipo><cartón># / *H<cartón># (formato
+    // confirmado con tickets reales) frente a *Y<cartón># (formato más
+    // reciente, un mismo código para línea y bingo): antes de este flag, un
+    // *Y<cartón># es línea; después, es bingo.
+    private bool _faseBingo;
+
     // Si el protocolo no emite el código T, no hay forma de saber el número
     // de partida del día; se numera de forma correlativa dentro de esta
     // ejecución (se reinicia si el servicio se reinicia) para no bloquear el
@@ -152,6 +161,10 @@ public class PartidaAccumulator {
                 AplicarSerie(evt.Value);
                 break;
             case 'J':
+                // El operador de la sala confirmó (2026-10-14, tercera ronda)
+                // que en el lanzamiento de partida J puede llevar basura
+                // detrás de los 4 dígitos de longitud de serie (p.ej.
+                // "386400001&BIPLUSE1.255"), a ignorar — ver AplicarLetraSerie.
                 AplicarLetraSerie(evt.Value);
                 break;
             case 'Z':
@@ -181,23 +194,31 @@ public class PartidaAccumulator {
                 RevertirCantoLinea(evt.Value);
                 break;
             case 'H':
-                AplicarCantoBingo(evt.Value);
+                AplicarEventoH(evt.Value);
                 break;
             case 'h':
                 RevertirCantoBingo(evt.Value);
                 break;
-
-            // 'f' (heartbeat "entre partidas"), 'Y' (entrando en
-            // comprobación) y 'º' (uno por cada *E#) están confirmados pero
-            // no tienen efecto en el DTO — el operador de la sala confirmó
-            // que 'º' en concreto no corresponde a ningún campo de HISTORICO,
-            // así que ignorarlo es la respuesta definitiva, no un parche
-            // mientras se investiga. Tratarlos como "no mapeado" inundaría el
-            // log sin motivo (sobre todo 'f' y 'º', que van una vez por
-            // segundo/por bola).
-            case 'f':
             case 'Y':
+                AplicarEventoY(evt.Value);
+                break;
+
+            // 'f' (heartbeat "entre partidas") y 'º' (uno por cada *E#) están
+            // confirmados pero no tienen efecto en el DTO — el operador de la
+            // sala confirmó que 'º' no corresponde a ningún campo de
+            // HISTORICO, así que ignorarlo es la respuesta definitiva, no un
+            // parche mientras se investiga. 'G', 'S', 'R' (premios sin
+            // confirmar) y las versiones en minúscula 'z'/'y' se ignoran por
+            // instrucción explícita del operador (2026-10-14, tercera ronda:
+            // "morralla" que complica sin aportar nada útil). Tratarlos como
+            // "no mapeado" inundaría el log sin motivo.
+            case 'f':
             case 'º':
+            case 'G':
+            case 'S':
+            case 'R':
+            case 'z':
+            case 'y':
                 break;
 
             default:
@@ -247,8 +268,13 @@ public class PartidaAccumulator {
     // aplica a ambas letras según corresponda, sin depender del orden real
     // de llegada entre X y J (en la captura disponible X siempre llega antes
     // que J, pero nada en el protocolo lo garantiza).
+    //
+    // Solo los primeros 4 caracteres son el código de longitud; el resto es
+    // basura a ignorar (confirmado por el operador de la sala, 2026-10-14,
+    // tercera ronda: p.ej. "386400001&BIPLUSE1.255" -> "3864").
     private void AplicarLetraSerie(string valor) {
-        int codigo = ParseInt(valor);
+        string codigoTexto = valor.Length > 4 ? valor[..4] : valor;
+        int codigo = ParseInt(codigoTexto);
         if (_settings.CurrentValue.SerieLetraMap.TryGetValue(codigo, out string? letra)) {
             _letraSerie = letra;
         }
@@ -267,13 +293,7 @@ public class PartidaAccumulator {
     // la lógica, así que se descarta tras separarlo del número de cartón.
     private void AplicarCantoLinea(string valor) {
         int carton = QuitarDigitoDeTipo(valor);
-        if (carton <= 0) return;
-
-        _cartonesLinea.Add(carton);
-        _dto.CartLinea = string.Join(",", _cartonesLinea);
-        _dto.BolaLinea = _bolasOrden.Count;
-        _dto.NumLineas = _cartonesLinea.Count;
-        _lineaTentativa = carton;
+        if (carton > 0) RegistrarCantoLinea(carton);
     }
 
     private void RevertirCantoLinea(string valor) {
@@ -290,20 +310,49 @@ public class PartidaAccumulator {
         _lineaTentativa = null;
     }
 
+    private void RegistrarCantoLinea(int carton) {
+        _cartonesLinea.Add(carton);
+        _dto.CartLinea = string.Join(",", _cartonesLinea);
+        _dto.BolaLinea = _bolasOrden.Count;
+        _dto.NumLineas = _cartonesLinea.Count;
+        _lineaTentativa = carton;
+    }
+
     // Canto de bingo: *H<cartón>#, SIN dígito de tipo (a diferencia de D) —
     // confirmado: *H2264# (partida 1) == ticket "2264-B" directo, sin
-    // transformar. *H# sin valor (marcador de "entrando en fase de bingo",
-    // según Jaume) ya no hace nada aquí porque ParseInt("") devuelve 0 y
-    // carton<=0 corta antes de tocar el DTO.
+    // transformar.
     private void AplicarCantoBingo(string valor) {
+        int carton = ParseInt(valor);
+        if (carton > 0) RegistrarCantoBingo(carton);
+    }
+
+    // *H# sin valor: marca la entrada en la fase de bingo (confirmado en las
+    // dos descripciones del protocolo recibidas) — no toca el DTO, pero
+    // activa _faseBingo para que un *Y<cartón># posterior se interprete como
+    // bingo en vez de línea (ver AplicarEventoY).
+    private void AplicarEventoH(string valor) {
+        if (string.IsNullOrEmpty(valor)) {
+            _faseBingo = true;
+            return;
+        }
+        AplicarCantoBingo(valor);
+    }
+
+    // *Y<cartón>#: formato de protocolo más reciente (confirmado por el
+    // operador de la sala, 2026-10-14, tercera ronda) donde un mismo código
+    // sirve para línea Y bingo, sin dígito de tipo — se distingue por si ya
+    // ha llegado el *H# que marca la fase de bingo. *Y# sin valor sigue
+    // siendo "entrando en comprobación", sin efecto en el DTO. Convive con el
+    // *D#/*H# ya confirmado con tickets reales por si la sala usa hardware
+    // de ambas variantes del protocolo.
+    private void AplicarEventoY(string valor) {
+        if (string.IsNullOrEmpty(valor)) return;
+
         int carton = ParseInt(valor);
         if (carton <= 0) return;
 
-        _cartonesBingo.Add(carton);
-        _dto.CartBingo = string.Join(",", _cartonesBingo);
-        _dto.BolaBingo = _bolasOrden.Count;
-        _dto.NumBingos = _cartonesBingo.Count;
-        _bingoTentativo = carton;
+        if (_faseBingo) RegistrarCantoBingo(carton);
+        else RegistrarCantoLinea(carton);
     }
 
     private void RevertirCantoBingo(string valor) {
@@ -315,6 +364,14 @@ public class PartidaAccumulator {
         _dto.NumBingos = _cartonesBingo.Count;
         if (_cartonesBingo.Count == 0) _dto.BolaBingo = null;
         _bingoTentativo = null;
+    }
+
+    private void RegistrarCantoBingo(int carton) {
+        _cartonesBingo.Add(carton);
+        _dto.CartBingo = string.Join(",", _cartonesBingo);
+        _dto.BolaBingo = _bolasOrden.Count;
+        _dto.NumBingos = _cartonesBingo.Count;
+        _bingoTentativo = carton;
     }
 
     private static int QuitarDigitoDeTipo(string valor) =>
@@ -443,6 +500,7 @@ public class PartidaAccumulator {
         _cartonesBingo.Clear();
         _lineaTentativa = null;
         _bingoTentativo = null;
+        _faseBingo = false;
         Array.Clear(_bolasConocidas);
         _recuperadaParcialmente = false;
     }
