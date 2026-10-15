@@ -508,7 +508,8 @@ public class PartidaAccumulator {
         }
 
         if (_recuperadaParcialmente) {
-            // RECLAMACION es VARCHAR(64) en Firebird (HISTORICO) — un texto más
+            // RECLAMACION es CHAR(64) en Firebird (HISTORICO, confirmado vía
+            // RDB$FIELDS: tipo 14 = CHAR fijo, no VARCHAR) — un texto más
             // largo provoca "string right truncation" y pierde la partida entera
             // (cae al fichero de fallback). El detalle completo queda en el log
             // ("enganchada a mitad vía evento 'e'"), aquí solo cabe una marca corta.
