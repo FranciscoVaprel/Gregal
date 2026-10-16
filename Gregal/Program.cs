@@ -118,7 +118,8 @@ static void MostrarBannerDeArranque(IConfiguration configuration) {
         bool puertoDetectado = puertosDisponibles.Contains(tag.ComPort, StringComparer.OrdinalIgnoreCase);
         Console.WriteLine($" [Tag] ComPort={tag.ComPort}{(puertoDetectado ? "" : " <- NO detectado en este PC")} | " +
                            $"CodSala/CodConc={tag.DefaultCodSala}/{tag.DefaultCodConc}" +
-                           (salaConfigurada ? "" : " <- sin configurar, se rechazarán partidas"));
+                           (salaConfigurada ? "" : " <- sin configurar, se rechazarán partidas") +
+                           $" | Fabricante={tag.Fabricante}");
     }
     if (network.Enabled) {
         bool puertoDetectado = puertosDisponibles.Contains(network.ComPort, StringComparer.OrdinalIgnoreCase);

@@ -35,19 +35,20 @@ public class TagProtocolSettings {
     // tarde. Ruta relativa al directorio del ejecutable.
     public string FallbackFilePath { get; set; } = "logs/historico_pendientes_tag.jsonl";
 
+    // Fabricante del hardware de la sala. Los dos conocidos usan protocolos
+    // parecidos pero no idénticos: en MCB, A/M/p son ruido constante del
+    // hardware y se ignoran aunque estén en PremioCodeMap (el fabricante
+    // manda sobre el mapa para esos tres códigos); en Metronia son premios
+    // reales (contrastado con tickets impresos por la máquina).
+    public Fabricante Fabricante { get; set; } = Fabricante.Metronia;
+
     // Letra de código del protocolo -> índice 0-based en HistoricoDTO.Premios
-    // (Premios[i] corresponde a la columna PREMIO{i+1}). L y B (línea y
-    // bingo) están confirmados por el operador de la sala. G, S y R ya no
-    // están aquí: confirmado (2026-10-14, tercera ronda) que se ignoran
-    // explícitamente en PartidaAccumulator.Aplicar, igual que 'z'/'y'.
-    //
-    // p (línea plus), A (prima) y M (bola tope de prima) están EN DUDA: una
-    // primera confirmación los daba como PREMIO5/6/7 respectivamente
-    // (contrastado contra tickets reales), pero un mensaje posterior del
-    // mismo operador dice literalmente "ignorar todo A y todo M" y "p
-    // ignorar", mostrando tráfico con A/M repetidos y a cero/basura. Se
-    // mantienen aquí, mapeados, a la espera de que se aclare la contradicción
-    // — ver PartidaAccumulator.cs y la conversación del 2026-10-14.
+    // (Premios[i] corresponde a la columna PREMIO{i+1}), confirmado por el
+    // operador de la sala: PREMIO1=línea (L), PREMIO2=bingo (B), PREMIO5=línea
+    // plus (p), PREMIO6=prima (A), PREMIO7=bola tope de prima (M). p/A/M solo
+    // se aplican con Fabricante=Metronia (ver arriba). G, S y R no están aquí
+    // porque se ignoran siempre, en cualquier fabricante (ver
+    // PartidaAccumulator.Aplicar).
     public Dictionary<string, int> PremioCodeMap { get; set; } = new() {
         ["L"] = 0,
         ["B"] = 1,
@@ -79,4 +80,9 @@ public class TagProtocolSettings {
     // puede poner a false una vez confirmado el protocolo (una línea por
     // evento, puede ser mucho volumen).
     public bool LogRawFrames { get; set; } = true;
+}
+
+public enum Fabricante {
+    Metronia,
+    MCB
 }

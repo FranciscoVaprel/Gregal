@@ -31,12 +31,9 @@ namespace Gregal.Parsing;
 // M (y probablemente p) no llevan un valor fiable: aparecen constantemente
 // como ruido ("*M0#*A0#*A000#...", varias veces entre cada bola) en vez de
 // una vez por partida con un importe real. No es una contradicción entre las
-// dos capturas, son máquinas distintas. Por eso PremioCodeMap decide esto
-// por configuración (ver AplicarSiEsPremioMapeado): si una sala no tiene A/
-// M/p en su PremioCodeMap, se ignoran en silencio (MCB); si los tiene
-// (como el valor por defecto, pensado para Metronia), se guardan como
-// siempre. Quien instale Gregal en una sala nueva debe revisar qué
-// fabricante tiene y ajustar PremioCodeMap en su appsettings.json.
+// dos capturas, son máquinas distintas. Se decide por configuración con
+// TagProtocolSettings.Fabricante (ver AplicarSiEsPremioMapeado): con MCB,
+// A/M/p se ignoran en silencio aunque estén en PremioCodeMap.
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
@@ -438,15 +435,17 @@ public class PartidaAccumulator {
     }
 
     // Códigos cuyo significado difiere confirmadamente según el fabricante
-    // (ver la nota al principio del fichero): si la sala no los tiene en su
-    // PremioCodeMap, se ignoran sin más — no se registran como "no mapeado"
-    // porque en hardware MCB aparecen decenas de veces por partida como puro
-    // ruido, y tratarlos igual que un código realmente desconocido inundaría
-    // el log sin aportar nada.
+    // (ver la nota al principio del fichero). Con Fabricante=MCB se ignoran
+    // aunque estén en PremioCodeMap; y en cualquier caso, si no están en el
+    // mapa, no se registran como "no mapeado": en hardware MCB aparecen
+    // decenas de veces por partida como puro ruido y llenarían el log.
     private static readonly HashSet<char> CodigosSegunFabricante = new() { 'A', 'M', 'p' };
 
     private void AplicarSiEsPremioMapeado(TagEvent evt) {
-        var map = _settings.CurrentValue.PremioCodeMap;
+        var settings = _settings.CurrentValue;
+        if (settings.Fabricante == Fabricante.MCB && CodigosSegunFabricante.Contains(evt.Code)) return;
+
+        var map = settings.PremioCodeMap;
         string code = evt.Code.ToString();
 
         if (map.TryGetValue(code, out int indice) && indice >= 0 && indice < _dto.Premios.Length) {

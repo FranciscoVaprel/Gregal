@@ -499,8 +499,25 @@ public class PartidaAccumulatorTests {
     // Confirmado (2026-10-14, cuarta ronda): hay dos fabricantes distintos
     // (Metronia y MCB) con protocolos parecidos. En MCB, A/M/p no llevan un
     // valor fiable (aparecen como ruido constante); en Metronia sí (ver
-    // Feed_ConPartidaRealCompleta...). Se distingue por configuración: si la
-    // sala no tiene A/M/p en su PremioCodeMap, se ignoran sin más.
+    // Feed_ConPartidaRealCompleta...). Se elige con TagProtocolSettings.Fabricante.
+    [Fact]
+    public void Feed_ConFabricanteMcb_IgnoraAMyPAunqueEstenEnElMapa() {
+        var settings = new TagProtocolSettings { Fabricante = Fabricante.MCB }; // mapa por defecto, con p/A/M
+        var acumulador = CreateAccumulator(settings);
+
+        acumulador.Feed(EventoDe("*L2400#"));
+        acumulador.Feed(EventoDe("*A15000#"));
+        acumulador.Feed(EventoDe("*M55#"));
+        acumulador.Feed(EventoDe("*p38000#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(dto);
+        Assert.Equal(24m, dto!.Premios[settings.PremioCodeMap["L"]]);
+        Assert.Null(dto.Premios[settings.PremioCodeMap["A"]]);
+        Assert.Null(dto.Premios[settings.PremioCodeMap["M"]]);
+        Assert.Null(dto.Premios[settings.PremioCodeMap["p"]]);
+    }
+
     [Fact]
     public void Feed_ConAoMNoConfiguradosEnEstaSala_SeIgnoranEnSilencio() {
         var settingsEstiloMcb = new TagProtocolSettings {
