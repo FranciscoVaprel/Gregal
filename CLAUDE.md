@@ -90,6 +90,8 @@ The Firebird connection string in `appsettings.json` currently embeds a plaintex
 
 The connection string also sets `Charset=ISO8859_1` explicitly (added 2026-10-15), matching the database's actual charset (confirmed via `RDB$CHARACTER_SET_NAME`) — without it, the Firebird client defaults to `NONE`, which doesn't translate accented characters/`ñ` and can corrupt text fields on write or read (surfaced when opening the database in a third-party tool, which warned about it explicitly; verified by round-tripping accented text through `HISTORICO.RECLAMACION`).
 
+Two databases, on purpose: `Gregal/Data/GREGAL_EMPTY.FDB` is the **versioned, always-empty template** the site installer copies for a new sala — never write test data into it. Local development uses `Gregal/Data/GREGAL_DEV.FDB` (gitignored; create it by copying the template), selected through `appsettings.Development.json`, which only applies under `dotnet run` (`DOTNET_ENVIRONMENT=Development` from `launchSettings.json`). The installed Windows Service runs as Production and uses `appsettings.json`, whose `Database=` path the installer rewrites per sala.
+
 ### Startup banner and PC diagnostics
 
 `Program.cs`'s `MostrarBannerDeArranque` (console-only, skipped under `WindowsServiceHelpers.IsWindowsService()`) prints which protocol(s) are active, their ports/sala config, and warns if something's missing or a configured `ComPort` isn't visible on this machine. `Diagnostics/InfoSistema.cs` supplies the RAM/disk-free numbers (via a `GlobalMemoryStatusEx` P/Invoke) — a quick sanity check before deploying to a sala's PC.

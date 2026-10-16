@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Base de datos de desarrollo local (GREGAL_EMPTY.FDB es la plantilla versionada)
+Gregal/Data/GREGAL_DEV.FDB
