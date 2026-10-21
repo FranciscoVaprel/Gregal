@@ -104,6 +104,49 @@ public class PartidaAccumulatorTests {
             warning.Contains("4000sdajfhg", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("*E4e1#")]   // notación científica: antes se leía como bola 40
+    [InlineData("*E4,5#")]   // separador de miles
+    [InlineData("*E(45)#")]  // negativo contable
+    [InlineData("*E 45#")]   // espacio dentro del valor
+    public void Feed_ConBolaConFormatoNoNumerico_LaDescartaYAvisa(string trama) {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe(trama));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("10", dto!.Bolas);
+        Assert.Single(logger.Warnings);
+    }
+
+    [Theory]
+    [InlineData("*D123fsdjkfh34#", "123fsdjkfh34")]
+    [InlineData("*Dx123#", "x123")] // el dígito de tipo también tiene que ser un dígito
+    public void Feed_ConLineaConBasura_AvisaConElValorCompleto(string trama, string valorEnElAviso) {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+
+        acumulador.Feed(EventoDe(trama));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Null(dto!.CartLinea);
+        Assert.Contains(logger.Warnings, w => w.Contains($"'{valorEnElAviso}'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Feed_ConDSinValor_NoAvisa() {
+        // "*D#" llega en cada partida MCB como marcador, no es basura.
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+
+        acumulador.Feed(EventoDe("*D#"));
+        acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Empty(logger.Warnings);
+    }
+
     [Fact]
     public void Feed_AlTerminarPartida_MapeaPrecioCajaYVendidos() {
         var dto = FeedEjemplo(CreateAccumulator());

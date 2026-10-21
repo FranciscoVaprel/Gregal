@@ -392,8 +392,18 @@ public class PartidaAccumulator {
         _bingoTentativo = carton;
     }
 
-    private int QuitarDigitoDeTipo(char code, string valor) =>
-        valor.Length < 2 ? 0 : ParseInt(code, valor[1..]);
+    // "*D#" sin valor (marcador en MCB) o con solo el dígito de tipo no es un
+    // canto: se ignora sin avisar. El aviso, si lo hay, muestra el valor
+    // completo (con el dígito de tipo) para que coincida con lo recibido.
+    private int QuitarDigitoDeTipo(char code, string valor) {
+        if (valor.Length < 2) return 0;
+        if (char.IsAsciiDigit(valor[0]) &&
+            int.TryParse(valor[1..], SoloDigitos, CultureInfo.InvariantCulture, out int carton)) {
+            return carton;
+        }
+        AvisarValorNoNumerico(code, valor);
+        return 0;
+    }
 
     // Evento 'e': snapshot binario del estado actual (ver EstadoPartidaDecoder)
     // — pensado para que un receptor que se conecta a mitad de partida sepa
@@ -534,21 +544,29 @@ public class PartidaAccumulator {
         _recuperadaParcialmente = false;
     }
 
+    // El protocolo solo manda dígitos (los importes van en céntimos, sin punto
+    // decimal). NumberStyles.Any aceptaba basura con pinta de número como
+    // válida: "4e1" -> 40, "4,000" -> 4000, "(400)" -> -400.
+    private const NumberStyles SoloDigitos = NumberStyles.None;
+
     private decimal ParseDecimal(char code, string value) {
-        if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result)) return result;
-        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        if (decimal.TryParse(value, SoloDigitos, CultureInfo.InvariantCulture, out decimal result)) return result;
+        AvisarValorNoNumerico(code, value);
         return 0m;
     }
 
     private int ParseInt(char code, string value) {
-        if (int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result)) return result;
-        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        if (int.TryParse(value, SoloDigitos, CultureInfo.InvariantCulture, out int result)) return result;
+        AvisarValorNoNumerico(code, value);
         return 0;
     }
 
     private int? ParseIntOrNull(char code, string value) {
-        if (int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result)) return result;
-        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        if (int.TryParse(value, SoloDigitos, CultureInfo.InvariantCulture, out int result)) return result;
+        AvisarValorNoNumerico(code, value);
         return null;
     }
+
+    private void AvisarValorNoNumerico(char code, string value) =>
+        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
 }
