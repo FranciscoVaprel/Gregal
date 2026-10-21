@@ -159,13 +159,47 @@ public class PartidaAccumulatorTests {
     public void Feed_AlTerminarPartida_AcumulaTodasLasBolasEnOrden() {
         var dto = FeedEjemplo(CreateAccumulator());
 
-        int bolasEsperadas = EjemploPartida.Count(f => f.StartsWith("*E"));
+        // EjemploPartida (anterior a tener datos reales) repite algunas bolas;
+        // las repeticiones se ignoran, así que se espera cada bola una vez, en
+        // el orden de su primera aparición.
+        var bolasEsperadas = EjemploPartida
+            .Where(f => f.StartsWith("*E"))
+            .Select(f => f[2..^1])
+            .Distinct()
+            .ToList();
 
-        Assert.Equal(bolasEsperadas, dto.Extracciones);
-        Assert.NotNull(dto.Bolas);
-        Assert.Equal(bolasEsperadas, dto.Bolas!.Split(',').Length);
+        Assert.Equal(bolasEsperadas.Count, dto.Extracciones);
+        Assert.Equal(string.Join(",", bolasEsperadas), dto.Bolas);
         Assert.StartsWith("19,27,29", dto.Bolas);
-        Assert.EndsWith(",47,64,54", dto.Bolas);
+    }
+
+    [Fact]
+    public void Feed_ConBolaRepetida_LaIgnoraYAvisa() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*E20#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("10,20", dto!.Bolas);
+        Assert.Equal(2, dto.Extracciones);
+        Assert.Contains(logger.Warnings, w => w.Contains("Bola 10 repetida", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Feed_ConBolaBorradaYVueltaARecibir_LaAceptaSinAviso() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*Z10#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("10", dto!.Bolas);
+        Assert.Empty(logger.Warnings);
     }
 
     [Fact]

@@ -196,6 +196,14 @@ public class PartidaAccumulator {
                 int bola = ParseInt(evt.Code, evt.Value);
                 if (bola is < 1 or > 90) break;
 
+                // Una bola no puede salir dos veces en la misma partida (salvo
+                // que se haya borrado antes con Z, que la desmarca): una
+                // repetición es ruido, p.ej. una retransmisión.
+                if (_bolasConocidas[bola - 1]) {
+                    _logger.LogWarning("Bola {bola} repetida en la misma partida (evento E); se ignora.", bola);
+                    break;
+                }
+
                 _bolasOrden.Add(bola);
                 _bolasConocidas[bola - 1] = true;
                 ActualizarBolasDto();
