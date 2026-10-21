@@ -1,10 +1,27 @@
 using Gregal.Config;
 using Gregal.Models;
 using Gregal.Parsing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 public class PartidaAccumulatorTests {
+    private sealed class RecordingLogger<T> : ILogger<T> {
+        public List<string> Warnings { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) {
+            if (logLevel == LogLevel.Warning) Warnings.Add(formatter(state, exception));
+        }
+    }
+
     // IOptionsMonitor<T> no tiene una factoría de pruebas en el proyecto;
     // este doble mínimo basta porque PartidaAccumulator solo lee CurrentValue.
     private sealed class FakeMonitor<T> : IOptionsMonitor<T> {
@@ -64,6 +81,27 @@ public class PartidaAccumulatorTests {
         var resultado = acumulador.Feed(EventoDe("*C307#"));
 
         Assert.Null(resultado);
+    }
+
+    [Fact]
+    public void Feed_ConValorDeBingoNoNumerico_AvisaYNoGuardaCartonParcial() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var monitor = new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings());
+        var acumulador = new PartidaAccumulator(logger, monitor);
+        var troceo = TagEventParser.Trocear("*H4000sdajfhg*F");
+        HistoricoDTO? dto = null;
+
+        foreach (string fragmento in troceo.Eventos) {
+            var evt = TagEventParser.Parse(fragmento);
+            Assert.NotNull(evt);
+            dto = acumulador.Feed(evt!.Value) ?? dto;
+        }
+
+        Assert.NotNull(dto);
+        Assert.Null(dto!.CartBingo);
+        Assert.Contains(logger.Warnings, warning =>
+            warning.Contains("evento tag H", StringComparison.Ordinal) &&
+            warning.Contains("4000sdajfhg", StringComparison.Ordinal));
     }
 
     [Fact]

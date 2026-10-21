@@ -28,6 +28,22 @@ public class TagEventParserTests {
         Assert.Equal(string.Empty, evt.Value.Value);
     }
 
+    [Fact]
+    public void Trocear_RecuperaElEventoFTrasUnDelimitadorPerdido() {
+        var troceo = TagEventParser.Trocear("*H4000sdajfhg*F");
+
+        Assert.Null(troceo.Basura);
+        Assert.Equal(new[] { "*H4000sdajfhg", "*F" }, troceo.Eventos);
+    }
+
+    [Fact]
+    public void Trocear_DescartaLaColaAnteriorAlPrimerAsterisco() {
+        var troceo = TagEventParser.Trocear("sdajfhg*F");
+
+        Assert.Equal("sdajfhg", troceo.Basura);
+        Assert.Equal(new[] { "*F" }, troceo.Eventos);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("*")]

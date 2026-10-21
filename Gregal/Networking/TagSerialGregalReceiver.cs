@@ -50,11 +50,12 @@ namespace Gregal.Networking {
         private readonly object _stopLock = new();
         private bool _detenido;
 
-        // El primer fragmento tras abrir el puerto (o tras limpiar el buffer
-        // por desbordamiento) puede ser la cola de un evento ya empezado
-        // antes de que Gregal se pusiera a escuchar (p.ej. arrancar a mitad
-        // de partida) — se descarta sin interpretarlo, para no tratar un
-        // valor truncado como si fuera un código válido.
+        // Tras abrir el puerto (o limpiar el buffer por desbordamiento) lo
+        // primero que llega puede ser la cola de un evento ya empezado. Esa
+        // cola nunca empieza por '*' y TagEventParser.Trocear la devuelve como
+        // basura, así que se descarta igual que cualquier otra; este flag solo
+        // sirve para no registrarla como aviso, porque en ese momento es
+        // esperable y no indica ruido en la línea.
         private bool _resincronizar = true;
 
         private readonly Channel<string> _messageChannel =
@@ -198,27 +199,30 @@ namespace Gregal.Networking {
             return true;
         }
 
-        // Solo ASCII de relleno (espacio/tab/CR/LF), nunca el Trim() genérico:
-        // este también recorta U+0085/U+00A0, que son bytes 0x85/0xA0
-        // legítimos dentro del payload binario del evento 'e' — recortarlos
-        // desalinearía el mensaje y rompería su checksum.
-        private static readonly char[] RellenoAsciiTolerado = { ' ', '\t', '\r', '\n' };
-
         private void ExtractAndEnqueueMessages() {
             while (_accumulator.Contains(Delimiter)) {
                 int idx = _accumulator.IndexOf(Delimiter);
-                string rawFragment = _accumulator[..idx].Trim(RellenoAsciiTolerado);
+                string trozo = _accumulator[..idx];
                 _accumulator = _accumulator[(idx + 1)..];
 
-                if (_resincronizar) {
-                    _resincronizar = false;
-                    _logger.LogDebug("Descartado el primer fragmento tras (re)sincronizar: '{frag}' (posible resto de un evento ya empezado).", rawFragment);
-                    continue;
+                var troceo = TagEventParser.Trocear(trozo);
+
+                if (troceo.Basura != null) {
+                    if (_resincronizar) {
+                        _logger.LogDebug("Descartado el resto de un evento ya empezado al (re)sincronizar: '{basura}'", troceo.Basura);
+                    }
+                    else {
+                        _logger.LogWarning("Descartados datos sin '*' de inicio de evento: '{basura}' (posible byte perdido en la línea serie).", troceo.Basura);
+                    }
                 }
+                if (troceo.Eventos.Count > 1) {
+                    _logger.LogWarning("Varios eventos sin '#' entre ellos en '{trozo}': se separan por '*' (posible byte perdido en la línea serie).", trozo);
+                }
+                if (troceo.Basura != null || troceo.Eventos.Count > 0) _resincronizar = false;
 
-                if (string.IsNullOrWhiteSpace(rawFragment)) continue;
-
-                _messageChannel.Writer.TryWrite(rawFragment);
+                foreach (string evento in troceo.Eventos) {
+                    _messageChannel.Writer.TryWrite(evento);
+                }
             }
         }
 

@@ -55,11 +55,15 @@ A different shape entirely: instead of one message per game, the hall hardware e
 
 ```
 raw bytes → _accumulator → split on TagProtocolSettings.FrameDelimiter ('#')
-   → TagEventParser.Parse() → TagEvent → PartidaAccumulator.Feed()
+   → TagEventParser.Trocear() (also splits on '*') → TagEventParser.Parse() → TagEvent
+   → PartidaAccumulator.Feed()
    → (only on event 'F') HistoricoDTO → HistoricoDtoValidator
    → _persistChannel → PersistLoopAsync → HistoricoRepository.SaveHistoricoAsync
                                             (failure → appended to TagProtocolSettings.FallbackFilePath)
 ```
+
+- **Framing is resilient to a lost `#`.** Every event starts with `*`, and `*` can't appear inside one (text values seen in real captures never contain it, and every byte of the binary `e` payload has bit `0x80` set), so `TagEventParser.Trocear` also splits on `*`: `*H4000junk*F` still yields the `F` and closes the game instead of leaving it open and merging it with the next one. Anything before the first `*` in a `#`-delimited chunk can't be a complete event and is discarded — logged as a warning, except right after opening the port or a buffer overflow, when it's just the expected tail of an event already in progress. This replaced an older rule that discarded the *whole* first chunk after opening the port (which used to swallow a valid `*T1#` sent first).
+- Numeric values with garbage (e.g. `*H4000junk#`) are not guessed: the field is dropped and `PartidaAccumulator` logs a warning naming the event code and raw value, instead of losing it silently.
 
 - `Parsing/PartidaAccumulator.cs` is stateful (one singleton instance, reused across games): it holds the in-progress game and only emits a `HistoricoDTO` on event `F`. Most of the mapping was confirmed on 2026-10-14 against a real 7-game capture from the Metronia hall and the tickets the machine itself prints per game (`Gregal.Tests/PartidaAccumulatorTests.cs`, `Feed_ConPartidaRealCompleta_CoincideConElTicketImpresoPorLaMaquina`) — notable confirmed decisions:
   - `C` (price) and the monetary `PremioCodeMap` codes (`L`, `p`, `A` — line, line-plus, prima) arrive in **cents**, not euros; `Finalizar()` divides by `10^NumDecimales` (from event `K`, defaulting to 2 if absent). `M` (ball-count cap for the prima prize, `PremioCodeMap["M"]` = `PREMIO7`) is explicitly excluded from that division — it's a ball number, not an amount. `Q`→`Caja` was left untouched — it never appeared in the real capture, so there's no evidence either way for its unit.

@@ -135,16 +135,16 @@ public class PartidaAccumulator {
     private void Aplicar(TagEvent evt) {
         switch (evt.Code) {
             case 'C':
-                _dto.Precio = ParseDecimal(evt.Value);
+                _dto.Precio = ParseDecimal(evt.Code, evt.Value);
                 break;
             case 'Q':
-                _dto.Caja = ParseDecimal(evt.Value);
+                _dto.Caja = ParseDecimal(evt.Code, evt.Value);
                 break;
             case 'V':
-                _dto.Vendidos = ParseInt(evt.Value);
+                _dto.Vendidos = ParseInt(evt.Code, evt.Value);
                 break;
             case 'T':
-                _dto.PartidaDia = ParseInt(evt.Value);
+                _dto.PartidaDia = ParseInt(evt.Code, evt.Value);
                 break;
 
             // --- Campos confirmados el 2026-10-14 contra tickets reales ---
@@ -152,17 +152,17 @@ public class PartidaAccumulator {
                 // Número de decimales (ticket no lo imprime tal cual, pero
                 // encaja con el campo ya existente HistoricoDTO.NumDecimales,
                 // hasta ahora sin usar).
-                _dto.NumDecimales = ParseInt(evt.Value);
+                _dto.NumDecimales = ParseInt(evt.Code, evt.Value);
                 break;
             case 'P':
                 // Primer cartón vendido. Confirmado: *P2051# == ticket
                 // "SERIE/S ... 2051" (partida 1).
-                _dto.Del1 = ParseInt(evt.Value);
+                _dto.Del1 = ParseInt(evt.Code, evt.Value);
                 break;
             case 'U':
                 // Último cartón vendido. Confirmado: *U2800# == ticket
                 // "SERIE/S ... 2800" (partida 1).
-                _dto.Al1 = ParseInt(evt.Value);
+                _dto.Al1 = ParseInt(evt.Code, evt.Value);
                 break;
             case 'X':
                 // Confirmado por el operador de la sala: X es SIEMPRE el
@@ -193,7 +193,7 @@ public class PartidaAccumulator {
                 // propia foto 'e' que llega justo antes y después es idéntica,
                 // confirmando que no es una bola real. Se descartan en vez de
                 // dejar que corrompan Bolas con un número imposible.
-                int bola = ParseInt(evt.Value);
+                int bola = ParseInt(evt.Code, evt.Value);
                 if (bola is < 1 or > 90) break;
 
                 _bolasOrden.Add(bola);
@@ -252,9 +252,9 @@ public class PartidaAccumulator {
     // (el borrado de bolas es un código distinto, 'Z' — ver EliminarBola).
     private void AplicarSerie(string valor) {
         string[] partes = valor.Split(',');
-        _dto.Serie1 = ParseIntOrNull(partes[0]);
+        _dto.Serie1 = ParseIntOrNull('X', partes[0]);
         if (partes.Length > 1) {
-            _dto.Serie2 = ParseIntOrNull(partes[1]);
+            _dto.Serie2 = ParseIntOrNull('X', partes[1]);
         }
     }
 
@@ -265,7 +265,7 @@ public class PartidaAccumulator {
     // estaba registrada (número fuera de rango o que no habíamos visto), no
     // hace nada — más seguro que corromper el estado con un valor inesperado.
     private void EliminarBola(string valor) {
-        int bola = ParseInt(valor);
+        int bola = ParseInt('Z', valor);
         if (bola is < 1 or > 90) return;
         if (!_bolasConocidas[bola - 1]) return;
 
@@ -292,7 +292,7 @@ public class PartidaAccumulator {
     // tercera ronda: p.ej. "386400001&BIPLUSE1.255" -> "3864").
     private void AplicarLetraSerie(string valor) {
         string codigoTexto = valor.Length > 4 ? valor[..4] : valor;
-        int codigo = ParseInt(codigoTexto);
+        int codigo = ParseInt('J', codigoTexto);
         if (_settings.CurrentValue.SerieLetraMap.TryGetValue(codigo, out string? letra)) {
             _letraSerie = letra;
         }
@@ -310,12 +310,12 @@ public class PartidaAccumulator {
     // columna en HISTORICO para guardarlo y no es necesario para el resto de
     // la lógica, así que se descarta tras separarlo del número de cartón.
     private void AplicarCantoLinea(string valor) {
-        int carton = QuitarDigitoDeTipo(valor);
+        int carton = QuitarDigitoDeTipo('D', valor);
         if (carton > 0) RegistrarCantoLinea(carton);
     }
 
     private void RevertirCantoLinea(string valor) {
-        int carton = QuitarDigitoDeTipo(valor);
+        int carton = QuitarDigitoDeTipo('u', valor);
         if (_lineaTentativa == null || _lineaTentativa.Value != carton) return;
 
         _cartonesLinea.Remove(carton);
@@ -340,7 +340,7 @@ public class PartidaAccumulator {
     // confirmado: *H2264# (partida 1) == ticket "2264-B" directo, sin
     // transformar.
     private void AplicarCantoBingo(string valor) {
-        int carton = ParseInt(valor);
+        int carton = ParseInt('H', valor);
         if (carton > 0) RegistrarCantoBingo(carton);
     }
 
@@ -366,7 +366,7 @@ public class PartidaAccumulator {
     private void AplicarEventoY(string valor) {
         if (string.IsNullOrEmpty(valor)) return;
 
-        int carton = ParseInt(valor);
+        int carton = ParseInt('Y', valor);
         if (carton <= 0) return;
 
         if (_faseBingo) RegistrarCantoBingo(carton);
@@ -374,7 +374,7 @@ public class PartidaAccumulator {
     }
 
     private void RevertirCantoBingo(string valor) {
-        int carton = ParseInt(valor);
+        int carton = ParseInt('h', valor);
         if (_bingoTentativo == null || _bingoTentativo.Value != carton) return;
 
         _cartonesBingo.Remove(carton);
@@ -392,8 +392,8 @@ public class PartidaAccumulator {
         _bingoTentativo = carton;
     }
 
-    private static int QuitarDigitoDeTipo(string valor) =>
-        valor.Length < 2 ? 0 : ParseInt(valor[1..]);
+    private int QuitarDigitoDeTipo(char code, string valor) =>
+        valor.Length < 2 ? 0 : ParseInt(code, valor[1..]);
 
     // Evento 'e': snapshot binario del estado actual (ver EstadoPartidaDecoder)
     // — pensado para que un receptor que se conecta a mitad de partida sepa
@@ -449,7 +449,7 @@ public class PartidaAccumulator {
         string code = evt.Code.ToString();
 
         if (map.TryGetValue(code, out int indice) && indice >= 0 && indice < _dto.Premios.Length) {
-            _dto.Premios[indice] = ParseDecimal(evt.Value);
+            _dto.Premios[indice] = ParseDecimal(evt.Code, evt.Value);
         }
         else if (!CodigosSegunFabricante.Contains(evt.Code)) {
             // Nivel Information a propósito: en un despliegue nuevo interesa
@@ -534,12 +534,21 @@ public class PartidaAccumulator {
         _recuperadaParcialmente = false;
     }
 
-    private static decimal ParseDecimal(string value) =>
-        decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result) ? result : 0m;
+    private decimal ParseDecimal(char code, string value) {
+        if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result)) return result;
+        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        return 0m;
+    }
 
-    private static int ParseInt(string value) =>
-        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result) ? result : 0;
+    private int ParseInt(char code, string value) {
+        if (int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result)) return result;
+        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        return 0;
+    }
 
-    private static int? ParseIntOrNull(string value) =>
-        int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result) ? result : null;
+    private int? ParseIntOrNull(char code, string value) {
+        if (int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out int result)) return result;
+        _logger.LogWarning("Valor numérico inválido en evento tag {code}: '{value}'. Se descarta.", code, value);
+        return null;
+    }
 }
