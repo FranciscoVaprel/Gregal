@@ -27,7 +27,7 @@ namespace Gregal.Networking {
         private readonly HistoricoRepository _repo;
         private readonly NetworkSettings networkSettings;
 
-        private SerialPort _port;
+        private SerialPort? _port;
         private string _accumulator = string.Empty;
 
         // Stop() se puede invocar dos veces casi a la vez: una desde StopAsync
@@ -101,7 +101,7 @@ namespace Gregal.Networking {
         public async Task ListenAsync(CancellationToken ct) {
 
             try {
-                _port.Open();
+                _port!.Open();
                 _logger.LogInformation("Puerto serie abierto: {port} a {baud} baudios.", networkSettings.ComPort, networkSettings.BaudRate);
 
                 // Procesa mensajes del canal hasta que se cancele

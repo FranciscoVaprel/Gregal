@@ -68,54 +68,54 @@ public class HistoricoRepository {
                             cmd.Parameters.Add("@PARTIDA_DIA", dto.PartidaDia);
 
                             // --- Datos Generales y Económicos ---
-                            cmd.Parameters.Add("@FECHA", (object)dto.Fecha ?? DBNull.Value);
-                            cmd.Parameters.Add("@PARTIDA_ANUAL", (object)dto.PartidaAnual ?? DBNull.Value);
-                            cmd.Parameters.Add("@NUM_DECIMALES", (object)dto.NumDecimales ?? DBNull.Value);
-                            cmd.Parameters.Add("@TIPO", (object)dto.Tipo ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_CIERRE", (object)dto.HoraCierre ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_VENTA", (object)dto.HoraVenta ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_SORTEO", (object)dto.HoraSorteo ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_FIN", (object)dto.HoraFin ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_CIERRE_H", (object)dto.HoraCierreH ?? DBNull.Value);
-                            cmd.Parameters.Add("@PRECIO", (object)dto.Precio ?? DBNull.Value);
-                            cmd.Parameters.Add("@VENTA", (object)dto.Venta ?? DBNull.Value);
-                            cmd.Parameters.Add("@CAJA", (object)dto.Caja ?? DBNull.Value);
-                            cmd.Parameters.Add("@TASA", (object)dto.Tasa ?? DBNull.Value);
-                            cmd.Parameters.Add("@BENEFICIO", (object)dto.Beneficio ?? DBNull.Value);
-                            cmd.Parameters.Add("@CAJA_I", (object)dto.CajaI ?? DBNull.Value);
-                            cmd.Parameters.Add("@CAJA_A_I", (object)dto.CajaAI ?? DBNull.Value);
-                            cmd.Parameters.Add("@ACUMULADOS", (object)dto.Acumulados ?? DBNull.Value);
+                            cmd.Parameters.Add("@FECHA", (object?)dto.Fecha ?? DBNull.Value);
+                            cmd.Parameters.Add("@PARTIDA_ANUAL", (object?)dto.PartidaAnual ?? DBNull.Value);
+                            cmd.Parameters.Add("@NUM_DECIMALES", (object?)dto.NumDecimales ?? DBNull.Value);
+                            cmd.Parameters.Add("@TIPO", (object?)dto.Tipo ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_CIERRE", (object?)dto.HoraCierre ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_VENTA", (object?)dto.HoraVenta ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_SORTEO", (object?)dto.HoraSorteo ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_FIN", (object?)dto.HoraFin ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_CIERRE_H", (object?)dto.HoraCierreH ?? DBNull.Value);
+                            cmd.Parameters.Add("@PRECIO", dto.Precio);
+                            cmd.Parameters.Add("@VENTA", dto.Venta);
+                            cmd.Parameters.Add("@CAJA", dto.Caja);
+                            cmd.Parameters.Add("@TASA", dto.Tasa);
+                            cmd.Parameters.Add("@BENEFICIO", dto.Beneficio);
+                            cmd.Parameters.Add("@CAJA_I", (object?)dto.CajaI ?? DBNull.Value);
+                            cmd.Parameters.Add("@CAJA_A_I", (object?)dto.CajaAI ?? DBNull.Value);
+                            cmd.Parameters.Add("@ACUMULADOS", (object?)dto.Acumulados ?? DBNull.Value);
 
                             // --- Series y Juego ---
-                            cmd.Parameters.Add("@LETRA1", (object)dto.Letra1 ?? DBNull.Value);
-                            cmd.Parameters.Add("@SERIE_1", (object)dto.Serie1 ?? DBNull.Value);
-                            cmd.Parameters.Add("@DEL_1", (object)dto.Del1 ?? DBNull.Value);
-                            cmd.Parameters.Add("@AL_1", (object)dto.Al1 ?? DBNull.Value);
-                            cmd.Parameters.Add("@LETRA2", (object)dto.Letra2 ?? DBNull.Value);
-                            cmd.Parameters.Add("@SERIE_2", (object)dto.Serie2 ?? DBNull.Value);
-                            cmd.Parameters.Add("@DEL_2", (object)dto.Del2 ?? DBNull.Value);
-                            cmd.Parameters.Add("@AL_2", (object)dto.Al2 ?? DBNull.Value);
-                            cmd.Parameters.Add("@VENDIDOS", (object)dto.Vendidos ?? DBNull.Value);
-                            cmd.Parameters.Add("@LARGO_SERIE", (object)dto.LargoSerie ?? DBNull.Value);
-                            cmd.Parameters.Add("@EXTRACCIONES", (object)dto.Extracciones ?? DBNull.Value);
-                            cmd.Parameters.Add("@GUIABOLAS", (object)dto.GuiaBolas ?? DBNull.Value);
-                            cmd.Parameters.Add("@RECLAMACION", (object)dto.Reclamacion ?? DBNull.Value);
-                            cmd.Parameters.Add("@BOLAS", (object)dto.Bolas ?? DBNull.Value);
-                            cmd.Parameters.Add("@BOLA_LINEA", (object)dto.BolaLinea ?? DBNull.Value);
-                            cmd.Parameters.Add("@NUM_LINEAS", (object)dto.NumLineas ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_LINEA", (object)dto.HoraLinea ?? DBNull.Value);
-                            cmd.Parameters.Add("@CART_LINEA", (object)dto.CartLinea ?? DBNull.Value);                            
-                            cmd.Parameters.Add("@BOLA_BINGO", (object)dto.BolaBingo ?? DBNull.Value);
-                            cmd.Parameters.Add("@NUM_BINGOS", (object)dto.NumBingos ?? DBNull.Value);
-                            cmd.Parameters.Add("@HORA_BINGO", (object)dto.HoraBingo ?? DBNull.Value);
-                            cmd.Parameters.Add("@CART_BINGO", (object)dto.CartBingo ?? DBNull.Value);
-                            cmd.Parameters.Add("@FECHA_SESION_MES", (object)dto.FechaSesionMes ?? DBNull.Value);
+                            cmd.Parameters.Add("@LETRA1", (object?)dto.Letra1 ?? DBNull.Value);
+                            cmd.Parameters.Add("@SERIE_1", (object?)dto.Serie1 ?? DBNull.Value);
+                            cmd.Parameters.Add("@DEL_1", (object?)dto.Del1 ?? DBNull.Value);
+                            cmd.Parameters.Add("@AL_1", (object?)dto.Al1 ?? DBNull.Value);
+                            cmd.Parameters.Add("@LETRA2", (object?)dto.Letra2 ?? DBNull.Value);
+                            cmd.Parameters.Add("@SERIE_2", (object?)dto.Serie2 ?? DBNull.Value);
+                            cmd.Parameters.Add("@DEL_2", (object?)dto.Del2 ?? DBNull.Value);
+                            cmd.Parameters.Add("@AL_2", (object?)dto.Al2 ?? DBNull.Value);
+                            cmd.Parameters.Add("@VENDIDOS", dto.Vendidos);
+                            cmd.Parameters.Add("@LARGO_SERIE", (object?)dto.LargoSerie ?? DBNull.Value);
+                            cmd.Parameters.Add("@EXTRACCIONES", (object?)dto.Extracciones ?? DBNull.Value);
+                            cmd.Parameters.Add("@GUIABOLAS", (object?)dto.GuiaBolas ?? DBNull.Value);
+                            cmd.Parameters.Add("@RECLAMACION", (object?)dto.Reclamacion ?? DBNull.Value);
+                            cmd.Parameters.Add("@BOLAS", (object?)dto.Bolas ?? DBNull.Value);
+                            cmd.Parameters.Add("@BOLA_LINEA", (object?)dto.BolaLinea ?? DBNull.Value);
+                            cmd.Parameters.Add("@NUM_LINEAS", (object?)dto.NumLineas ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_LINEA", (object?)dto.HoraLinea ?? DBNull.Value);
+                            cmd.Parameters.Add("@CART_LINEA", (object?)dto.CartLinea ?? DBNull.Value);                            
+                            cmd.Parameters.Add("@BOLA_BINGO", (object?)dto.BolaBingo ?? DBNull.Value);
+                            cmd.Parameters.Add("@NUM_BINGOS", (object?)dto.NumBingos ?? DBNull.Value);
+                            cmd.Parameters.Add("@HORA_BINGO", (object?)dto.HoraBingo ?? DBNull.Value);
+                            cmd.Parameters.Add("@CART_BINGO", (object?)dto.CartBingo ?? DBNull.Value);
+                            cmd.Parameters.Add("@FECHA_SESION_MES", (object?)dto.FechaSesionMes ?? DBNull.Value);
 
                             // Bucle para los 99 premios
                             for (int i = 1; i <= 99; i++) {
                                 object valor = DBNull.Value;
                                 if (dto.Premios != null && dto.Premios.Length >= i) {
-                                    valor = (object)dto.Premios[i - 1] ?? DBNull.Value;
+                                    valor = (object?)dto.Premios[i - 1] ?? DBNull.Value;
                                 }
                                 cmd.Parameters.Add($"@PR{i}", valor);
                             }
