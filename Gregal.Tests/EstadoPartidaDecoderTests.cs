@@ -75,10 +75,38 @@ public class EstadoPartidaDecoderTests {
     public void Decode_ConMarcadorDesconocido_DevuelveNull() {
         string payload = ConstruirPayloadSinUltimaBola(new[] { 1 }, jugandoLinea: true);
         char[] chars = payload.ToCharArray();
-        chars[0] = (char)0x90; // ni 0x8D ni 0x8E
+        chars[0] = (char)0x90; // ni 0x8D, 0x8E ni 0x8F
         string invalido = new string(chars);
 
         Assert.Null(EstadoPartidaDecoder.Decode(invalido));
+    }
+
+    private static string DesdeHex(string hex) =>
+        new string(hex.Split(' ').Select(h => (char)Convert.ToByte(h, 16)).ToArray());
+
+    // Cadena real de la captura "7 partidas Metronia" (partida 1, justo tras
+    // la bola 52, la 18ª), con marcador 0x8F.
+    public const string CadenaRealMetronia = "8F 80 80 80 89 CB 80 B0 94 C4 92 80 84 8B 81 FE 81";
+    public static readonly int[] BolasCadenaRealMetronia =
+        { 22, 25, 29, 30, 32, 35, 47, 48, 52, 54, 59, 63, 65, 68, 80, 85, 86, 88 };
+
+    [Fact]
+    public void Decode_ConCadenaRealDeMetronia_DevuelveLasBolasSalidas() {
+        var resultado = EstadoPartidaDecoder.Decode(DesdeHex(CadenaRealMetronia));
+
+        Assert.NotNull(resultado);
+        var bolas = Enumerable.Range(1, 90).Where(n => resultado!.Value.BolasExtraidas[n - 1]);
+        Assert.Equal(BolasCadenaRealMetronia, bolas);
+        Assert.Null(resultado!.Value.UltimaBola); // en Metronia el byte 14 no es la última bola
+    }
+
+    [Fact]
+    public void Decode_ConCadenaRealVaciaDeMcb_EsValidaYSinBolas() {
+        // Se repite al principio de cada partida en la captura de MCB.
+        var resultado = EstadoPartidaDecoder.Decode(DesdeHex("8E 80 80 80 80 80 80 80 80 80 80 80 80 C0 80 C0 80"));
+
+        Assert.NotNull(resultado);
+        Assert.DoesNotContain(true, resultado!.Value.BolasExtraidas);
     }
 
     [Fact]

@@ -174,6 +174,25 @@ public class PartidaAccumulatorTests {
     }
 
     [Fact]
+    public void Feed_ConCadenaDeEstadoRealDeMetronia_NoAvisaNiMarcaRecuperada() {
+        // Las 18 bolas reales previas a esa cadena, en su orden de salida.
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        foreach (int bola in new[] { 68, 85, 30, 29, 63, 65, 48, 59, 22, 88, 25, 32, 80, 86, 35, 54, 47, 52 }) {
+            acumulador.Feed(EventoDe($"*E{bola}#"));
+        }
+        string payload = new string(EstadoPartidaDecoderTests.CadenaRealMetronia.Split(' ')
+            .Select(h => (char)Convert.ToByte(h, 16)).ToArray());
+
+        acumulador.Feed(new TagEvent('e', payload));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Empty(logger.Warnings);
+        Assert.Null(dto!.Reclamacion);
+        Assert.Equal(18, dto.Extracciones);
+    }
+
+    [Fact]
     public void Feed_ConBolaRepetida_LaIgnoraYAvisa() {
         var logger = new RecordingLogger<PartidaAccumulator>();
         var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));

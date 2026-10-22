@@ -62,8 +62,8 @@ public class PartidaAccumulator {
     // *e......#"), no solo al reconectar — pero en la captura real siempre
     // llega justo despues de su *E# correspondiente, así que en una partida
     // normal (sin desconexión real) nunca aporta bolas "nuevas" y este flag
-    // no debería activarse nunca. Pendiente de confirmar con una conexión en
-    // vivo que esto se cumple siempre (ver nota sobre el checksum más abajo).
+    // no se activa: comprobado con las 1.469 cadenas de la captura real de
+    // Metronia, que coinciden todas con las bolas ya recibidas por *E#.
     private bool _recuperadaParcialmente;
 
     // Letra de edición del cartón (evento J, vía TagProtocolSettings.
@@ -419,15 +419,6 @@ public class PartidaAccumulator {
     // (por su *E# real), para no tocar el orden real ya registrado; las
     // nuevas se añaden en orden numérico ascendente, que es lo único que este
     // snapshot puede dar (no dice en qué orden salieron).
-    //
-    // Nota 2026-10-14: no se ha podido validar todavía el formato de bits
-    // contra una trama real — al reconstruir los bytes originales desde la
-    // captura de texto ("7 partidas Metronia.txt") el primer byte no coincide
-    // con el marcador esperado (0x8D/0x8E), posiblemente por la
-    // recodificación Windows-1252 que sufrió esa captura antes de guardarse
-    // como .txt. Mientras no se confirme con una captura binaria o una
-    // prueba en vivo, es posible que Decode() esté devolviendo null para
-    // TODAS las tramas 'e' reales (ver el aviso que registra más abajo).
     private void AplicarEstadoPartida(string payload) {
         var resultado = EstadoPartidaDecoder.Decode(payload);
         if (resultado == null) {

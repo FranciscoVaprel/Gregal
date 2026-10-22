@@ -15,6 +15,13 @@ public static class EstadoPartidaDecoder {
     private const int MaxBolas = 90;
     private const byte MarcadorSinUltimaBola = 0x8D;
     private const byte MarcadorConUltimaBola = 0x8E;
+    // Marcador del hardware Metronia, que no aparece en CadenaEstado.cs:
+    // mismo formato que 0x8E (comprobado con las 1.469 cadenas de la captura
+    // real "7 partidas Metronia": todas pasan el checksum y sus bolas coinciden
+    // con las de los *E# recibidos), pero el byte 14 no es la última bola
+    // (vale 1 cuando la última fue la 52), así que no se devuelve. El bit de
+    // fase (JugandoLinea) tampoco se ha validado para Metronia.
+    private const byte MarcadorMetronia = 0x8F;
     private const byte BitMarcador = 0x80;
     private const byte MascaraDatos = 0x7F;
 
@@ -31,11 +38,12 @@ public static class EstadoPartidaDecoder {
 
         bool conUltimaBola = b[0] == MarcadorConUltimaBola;
         bool sinUltimaBola = b[0] == MarcadorSinUltimaBola;
-        if (!conUltimaBola && !sinUltimaBola) return null;
+        bool metronia = b[0] == MarcadorMetronia;
+        if (!conUltimaBola && !sinUltimaBola && !metronia) return null;
 
-        // "Con última bola" trae un byte extra (el número de esa bola) antes
-        // del checksum; por eso sus índices van uno más allá.
-        int ultimoIndiceSumado = conUltimaBola ? 14 : 13;
+        // "Con última bola" (y Metronia) traen un byte extra antes del
+        // checksum; por eso sus índices van uno más allá.
+        int ultimoIndiceSumado = conUltimaBola || metronia ? 14 : 13;
         int indiceChecksumBajo = ultimoIndiceSumado + 1;
         int indiceChecksumAlto = ultimoIndiceSumado + 2;
 
