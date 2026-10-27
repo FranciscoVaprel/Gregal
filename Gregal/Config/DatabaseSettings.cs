@@ -5,5 +5,6 @@ using System.Text;
 namespace Gregal.Config {
     public class DatabaseSettings {
         public string ConnectionString { get; set; } = string.Empty;
+        public string TableName { get; set; } = "HISTORICO";
     }
 }

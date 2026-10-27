@@ -1,4 +1,17 @@
 # Gregal
+
+## Configuración de la base de datos
+
+En `appsettings.json`, `DatabaseSettings:ConnectionString` indica el archivo
+`.FDB` y `DatabaseSettings:TableName` la tabla destino (por defecto,
+`HISTORICO`). Para desarrollo, `appsettings.Development.json` puede definir
+ambos valores de forma independiente.
+
+La tabla configurada debe existir y tener las mismas columnas, tipos y clave de
+emparejamiento que `HISTORICO`, ya que Gregal guarda el histórico con un
+`UPDATE OR INSERT` usando `COD_SALA`, `COD_CONC`, `FECHA_SESION` y
+`PARTIDA_DIA`.
+
 Gregal/
 ├── Data/                 # Acceso a Base de Datos (Firebird)
 ├── Models/               # Entidades (la clase Historico que creamos)

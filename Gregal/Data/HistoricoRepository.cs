@@ -3,6 +3,7 @@ using Gregal.Models;
 using Gregal.Config;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace Gregal.Data;
 
@@ -23,9 +24,12 @@ public class HistoricoRepository {
         // Log de nivel Debug: Solo lo verás si en el JSON pones "Default": "Debug"
         _logger.LogDebug("Intentando guardar Partida {partida} de la Sala {sala}...", dto.PartidaDia, dto.CodSala);
 
+        var dbSettings = _dbSettings.CurrentValue;
+        string tableName = ValidateTableName(dbSettings.TableName);
+
         await _dbSemaphore.WaitAsync();
         try {
-            using (FbConnection connection = new FbConnection(_dbSettings.CurrentValue.ConnectionString)) {
+            using (FbConnection connection = new FbConnection(dbSettings.ConnectionString)) {
                 try {
                     await connection.OpenAsync();
                 }
@@ -41,7 +45,7 @@ public class HistoricoRepository {
                         string columnasPremios = string.Join(", ", Enumerable.Range(1, 99).Select(i => $"PREMIO{i}"));
                         string parametrosPremios = string.Join(", ", Enumerable.Range(1, 99).Select(i => $"@PR{i}"));
 
-                        string sql = $@"UPDATE OR INSERT INTO HISTORICO (
+                        string sql = $@"UPDATE OR INSERT INTO ""{tableName}"" (
                     COD_SALA, COD_CONC, FECHA_SESION, PARTIDA_DIA, FECHA, PARTIDA_ANUAL, NUM_DECIMALES, TIPO, 
                     HORA_CIERRE, HORA_VENTA, HORA_SORTEO, HORA_FIN, HORA_CIERRE_H, PRECIO, VENTA, CAJA, TASA, 
                     BENEFICIO, CAJA_I, CAJA_A_I, ACUMULADOS, LETRA1, SERIE_1, DEL_1, AL_1, LETRA2, SERIE_2, 
@@ -154,6 +158,7 @@ public class HistoricoRepository {
                         return false;
                     }
                 }
+
             }
         }
         finally {
@@ -161,5 +166,17 @@ public class HistoricoRepository {
             // pase lo que pase (éxito o error).
             _dbSemaphore.Release();
         }
+    }
+
+    private static string ValidateTableName(string? tableName) {
+        if (string.IsNullOrWhiteSpace(tableName) ||
+            tableName.Length > 63 ||
+            !Regex.IsMatch(tableName, @"\A[A-Za-z][A-Za-z0-9_$]*\z", RegexOptions.CultureInvariant)) {
+            throw new InvalidOperationException(
+                "DatabaseSettings:TableName debe ser un identificador Firebird de 1 a 63 caracteres, " +
+                "empezar por una letra y contener solo letras, números, '_' o '$'.");
+        }
+
+        return tableName;
     }
 }
