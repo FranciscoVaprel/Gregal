@@ -109,12 +109,12 @@ public class PartidaAccumulator {
     // *Y<cartón># es línea; después, es bingo.
     private bool _faseBingo;
 
-    // Si el protocolo no emite el código T, no hay forma de saber el número
-    // de partida del día; se numera de forma correlativa dentro de esta
-    // ejecución (se reinicia si el servicio se reinicia) para no bloquear el
-    // guardado solo por este campo. No se reinicia en Reset(): debe avanzar
-    // de una partida a la siguiente.
-    private int _siguientePartidaDia = 1;
+    // Partida cerrada sin haber visto su *T# (la captura empezó a mitad de
+    // partida: T llega solo al principio, en las dos capturas reales). No se
+    // le inventa un número — el UPDATE OR INSERT machacaría una partida real
+    // del día con ese número —, sino que espera a la T de la siguiente
+    // partida y se guarda como la anterior (T-1). No se reinicia en Reset().
+    private HistoricoDTO? _pendienteSinT;
 
     public PartidaAccumulator(ILogger<PartidaAccumulator> logger, IOptionsMonitor<TagProtocolSettings> settings) {
         _logger = logger;
@@ -122,13 +122,70 @@ public class PartidaAccumulator {
     }
 
     public HistoricoDTO? Feed(TagEvent evt) {
-        if (evt.Code == 'F') {
-            var completada = Finalizar();
-            Reset();
-            return completada;
+        switch (evt.Code) {
+            case 'F':
+                return CerrarPartida();
+
+            // *f# solo llega entre partidas (comprobado en las 11 partidas de
+            // la captura MCB: ninguno entre una T y su F). Si llega con una
+            // partida abierta, su *F# se perdió por el camino.
+            case 'f' when TieneContenido:
+                _logger.LogWarning("Llega *f# (entre partidas) con una partida abierta: se perdió su *F#. Se cierra la partida.");
+                return CerrarPartida();
+
+            case 'T': {
+                var pendiente = ResolverPendienteSinT(evt.Value);
+                Aplicar(evt);
+                return pendiente;
+            }
+
+            default:
+                Aplicar(evt);
+                return null;
+        }
+    }
+
+    private bool TieneContenido =>
+        _bolasOrden.Count > 0 || _cartonesLinea.Count > 0 || _cartonesBingo.Count > 0;
+
+    private HistoricoDTO? CerrarPartida() {
+        bool conT = _dto.PartidaDia > 0;
+        bool vacia = !TieneContenido;
+        var completada = Finalizar(sinT: !conT);
+        Reset();
+
+        if (conT) return completada;
+
+        // MCB manda dos *F# al acabar cada partida (el segundo tras un *f#),
+        // y un receptor que arranca entre partidas puede ver un *F# suelto.
+        if (vacia) {
+            _logger.LogDebug("*F# sin partida en curso (sin T ni bolas); se ignora.");
+            return null;
         }
 
-        Aplicar(evt);
+        if (_pendienteSinT != null) {
+            _logger.LogWarning("Se descarta una partida sin T anterior (bolas {bolas}): llegó otra sin T antes de poder deducir su número.", _pendienteSinT.Bolas);
+        }
+        _pendienteSinT = completada;
+        _logger.LogWarning("Partida sin evento T (la captura empezó a mitad de partida): se guardará con el número anterior a la siguiente T que llegue.");
+        return null;
+    }
+
+    private HistoricoDTO? ResolverPendienteSinT(string valorT) {
+        if (_pendienteSinT == null) return null;
+
+        var pendiente = _pendienteSinT;
+        _pendienteSinT = null;
+
+        if (int.TryParse(valorT, SoloDigitos, CultureInfo.InvariantCulture, out int siguiente) && siguiente > 1) {
+            pendiente.PartidaDia = siguiente - 1;
+            _logger.LogInformation("Partida sin T guardada como partida {partida} (la siguiente llegó con T{siguiente}).", pendiente.PartidaDia, siguiente);
+            return pendiente;
+        }
+
+        // T1 (o una T ilegible): cambio de día o reinicio de la numeración; no
+        // hay forma de saber qué número tenía.
+        _logger.LogWarning("Se descarta la partida sin T (bolas {bolas}): la siguiente T ('{t}') no permite deducir su número.", pendiente.Bolas, valorT);
         return null;
     }
 
@@ -239,6 +296,8 @@ public class PartidaAccumulator {
             // "morralla" que complica sin aportar nada útil). Tratarlos como
             // "no mapeado" inundaría el log sin motivo.
             case 'f':
+                Console.Write("case 'f':");
+                break;
             case 'º':
             case 'G':
             case 'S':
@@ -468,7 +527,7 @@ public class PartidaAccumulator {
         }
     }
 
-    private HistoricoDTO Finalizar() {
+    private HistoricoDTO Finalizar(bool sinT) {
         var settings = _settings.CurrentValue;
         _dto.CodSala = settings.DefaultCodSala;
         _dto.CodConc = settings.DefaultCodConc;
@@ -478,12 +537,6 @@ public class PartidaAccumulator {
         if (string.IsNullOrWhiteSpace(_dto.FechaSesion)) {
             _dto.FechaSesion = DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
-
-        // PartidaDia: si no llegó por el código T, se usa el correlativo interno.
-        if (_dto.PartidaDia <= 0) {
-            _dto.PartidaDia = _siguientePartidaDia;
-        }
-        _siguientePartidaDia++;
 
         // Letra de edición (ver AplicarLetraSerie): se aplica aquí, ya con
         // Serie1/Serie2 definitivos, en vez de al llegar el evento J.
@@ -515,13 +568,21 @@ public class PartidaAccumulator {
             if (_dto.Premios[i].HasValue) _dto.Premios[i] = _dto.Premios[i]!.Value / divisor;
         }
 
-        if (_recuperadaParcialmente) {
+        // Sin T, la partida se guarda con el número deducido de la siguiente
+        // (ver ResolverPendienteSinT) y sin la cabecera (precio, cartones,
+        // serie, premios: todo llega justo tras la T), así que siempre se marca.
+        string? nota = sinT
+            ? (_recuperadaParcialmente
+                ? "PARTIDA A MEDIAS: Nº DEDUCIDO, SIN CABECERA, BOLAS APROX."
+                : "PARTIDA A MEDIAS: Nº DEDUCIDO, SIN CABECERA")
+            : (_recuperadaParcialmente ? "PARTIDA RECUPERADA A MEDIAS (orden de bolas aproximado)" : null);
+
+        if (nota != null) {
             // RECLAMACION es CHAR(64) en Firebird (HISTORICO, confirmado vía
             // RDB$FIELDS: tipo 14 = CHAR fijo, no VARCHAR) — un texto más
             // largo provoca "string right truncation" y pierde la partida entera
             // (cae al fichero de fallback). El detalle completo queda en el log
             // ("enganchada a mitad vía evento 'e'"), aquí solo cabe una marca corta.
-            const string nota = "PARTIDA RECUPERADA A MEDIAS (orden de bolas aproximado)";
             const int maxReclamacion = 64;
             string combinado = string.IsNullOrWhiteSpace(_dto.Reclamacion) ? nota : _dto.Reclamacion + " | " + nota;
             _dto.Reclamacion = combinado.Length > maxReclamacion ? combinado[..maxReclamacion] : combinado;

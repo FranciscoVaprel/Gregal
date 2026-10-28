@@ -31,9 +31,17 @@ public class PartidaAccumulatorTests {
         public IDisposable? OnChange(Action<T, string?> listener) => null;
     }
 
-    private static PartidaAccumulator CreateAccumulator(TagProtocolSettings? settings = null) {
+    // Con una partida ya empezada (*T1#): sin T, el acumulador no devuelve la
+    // partida al llegar F (no sabe su número), y la mayoría de tests no van de eso.
+    private static PartidaAccumulator CreateAccumulator(TagProtocolSettings? settings = null, ILogger<PartidaAccumulator>? logger = null) {
+        var acumulador = CreateAccumulatorSinT(settings, logger);
+        acumulador.Feed(new TagEvent('T', "1"));
+        return acumulador;
+    }
+
+    private static PartidaAccumulator CreateAccumulatorSinT(TagProtocolSettings? settings = null, ILogger<PartidaAccumulator>? logger = null) {
         var monitor = new FakeMonitor<TagProtocolSettings>(settings ?? new TagProtocolSettings());
-        return new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance, monitor);
+        return new PartidaAccumulator(logger ?? NullLogger<PartidaAccumulator>.Instance, monitor);
     }
 
     private static TagEvent EventoDe(string rawFragmentConHash) {
@@ -49,7 +57,7 @@ public class PartidaAccumulatorTests {
     // reales, ver Feed_ConPartidaRealCompleta...) interpreten C/L/B/R igual
     // que lo haría el hardware real.
     private static readonly string[] EjemploPartida = {
-        "*K2#", "*B769#", "*L588#", "*P3167#", "*R9165#", "*C307#", "*V110#", "*J3888#", "*D#",
+        "*T1#", "*K2#", "*B769#", "*L588#", "*P3167#", "*R9165#", "*C307#", "*V110#", "*J3888#", "*D#",
         "*E19#","*E27#","*E29#","*E40#","*E50#","*E64#","*E73#","*E48#","*E23#","*E76#",
         "*E31#","*E52#","*E65#","*E68#","*E70#","*E6#","*E46#","*E58#","*E37#","*E42#",
         "*E23#","*E44#","*E77#","*E75#","*E9#","*E60#","*E75#","*E45#","*E65#","*E28#",
@@ -86,8 +94,7 @@ public class PartidaAccumulatorTests {
     [Fact]
     public void Feed_ConValorDeBingoNoNumerico_AvisaYNoGuardaCartonParcial() {
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var monitor = new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings());
-        var acumulador = new PartidaAccumulator(logger, monitor);
+        var acumulador = CreateAccumulator(logger: logger);
         var troceo = TagEventParser.Trocear("*H4000sdajfhg*F");
         HistoricoDTO? dto = null;
 
@@ -111,7 +118,7 @@ public class PartidaAccumulatorTests {
     [InlineData("*E 45#")]   // espacio dentro del valor
     public void Feed_ConBolaConFormatoNoNumerico_LaDescartaYAvisa(string trama) {
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
 
         acumulador.Feed(EventoDe("*E10#"));
         acumulador.Feed(EventoDe(trama));
@@ -126,7 +133,7 @@ public class PartidaAccumulatorTests {
     [InlineData("*Dx123#", "x123")] // el dígito de tipo también tiene que ser un dígito
     public void Feed_ConLineaConBasura_AvisaConElValorCompleto(string trama, string valorEnElAviso) {
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
 
         acumulador.Feed(EventoDe(trama));
         var dto = acumulador.Feed(EventoDe("*F#"));
@@ -139,7 +146,7 @@ public class PartidaAccumulatorTests {
     public void Feed_ConDSinValor_NoAvisa() {
         // "*D#" llega en cada partida MCB como marcador, no es basura.
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
 
         acumulador.Feed(EventoDe("*D#"));
         acumulador.Feed(EventoDe("*F#"));
@@ -177,7 +184,7 @@ public class PartidaAccumulatorTests {
     public void Feed_ConCadenaDeEstadoRealDeMetronia_NoAvisaNiMarcaRecuperada() {
         // Las 18 bolas reales previas a esa cadena, en su orden de salida.
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
         foreach (int bola in new[] { 68, 85, 30, 29, 63, 65, 48, 59, 22, 88, 25, 32, 80, 86, 35, 54, 47, 52 }) {
             acumulador.Feed(EventoDe($"*E{bola}#"));
         }
@@ -195,7 +202,7 @@ public class PartidaAccumulatorTests {
     [Fact]
     public void Feed_ConBolaRepetida_LaIgnoraYAvisa() {
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
 
         acumulador.Feed(EventoDe("*E10#"));
         acumulador.Feed(EventoDe("*E20#"));
@@ -210,7 +217,7 @@ public class PartidaAccumulatorTests {
     [Fact]
     public void Feed_ConBolaBorradaYVueltaARecibir_LaAceptaSinAviso() {
         var logger = new RecordingLogger<PartidaAccumulator>();
-        var acumulador = new PartidaAccumulator(logger, new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()));
+        var acumulador = CreateAccumulator(logger: logger);
 
         acumulador.Feed(EventoDe("*E10#"));
         acumulador.Feed(EventoDe("*Z10#"));
@@ -330,15 +337,14 @@ public class PartidaAccumulatorTests {
     }
 
     [Fact]
-    public void Feed_SinCodigoT_AsumeFechaSesionDeHoyYPartidaDiaCorrelativo() {
+    public void Feed_AsumeFechaSesionDeHoy() {
         var dto = FeedEjemplo(CreateAccumulator());
 
         Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), dto.FechaSesion);
-        Assert.Equal(1, dto.PartidaDia);
     }
 
     [Fact]
-    public void Feed_ConCodigoT_UsaElValorRecibidoEnVezDelCorrelativo() {
+    public void Feed_ConCodigoT_UsaElValorRecibido() {
         var acumulador = CreateAccumulator();
 
         acumulador.Feed(EventoDe("*T42#"));
@@ -349,14 +355,145 @@ public class PartidaAccumulatorTests {
     }
 
     [Fact]
-    public void Feed_EnPartidasSucesivasSinCodigoT_IncrementaElCorrelativo() {
-        var acumulador = CreateAccumulator();
+    public void Feed_ConDobleFDeMcb_IgnoraElSegundoF() {
+        var acumulador = CreateAccumulatorSinT();
 
-        var primera = acumulador.Feed(EventoDe("*F#"));
-        var segunda = acumulador.Feed(EventoDe("*F#"));
+        acumulador.Feed(EventoDe("*T3#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        var partida = acumulador.Feed(EventoDe("*F#"));
+        acumulador.Feed(EventoDe("*f#"));
+        var segundoF = acumulador.Feed(EventoDe("*F#"));
 
-        Assert.Equal(1, primera!.PartidaDia);
-        Assert.Equal(2, segunda!.PartidaDia);
+        Assert.Equal(3, partida!.PartidaDia);
+        Assert.Null(segundoF);
+    }
+
+    [Fact]
+    public void Feed_ConCapturaRealDeMcb_DevuelveSoloLasOncePartidas() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(new TagProtocolSettings { Fabricante = Fabricante.MCB }, logger);
+
+        var partidas = ReproducirCaptura(acumulador, LeerCaptura("Volcado MCB.txt"));
+
+        Assert.Equal(Enumerable.Range(1, 11), partidas.Select(p => p.PartidaDia));
+        Assert.DoesNotContain(logger.Warnings, w => w.Contains("estado de partida"));
+        // La 11 se cierra sin ninguna bola (la captura acaba ahí), pero con su T.
+        Assert.All(partidas.Take(10), p => Assert.NotNull(p.Bolas));
+        Assert.Null(partidas[10].Bolas);
+    }
+
+    private static List<HistoricoDTO> ReproducirCaptura(PartidaAccumulator acumulador, string captura) {
+        var partidas = new List<HistoricoDTO>();
+        foreach (string trozo in captura.Split('#')) {
+            foreach (string fragmento in TagEventParser.Trocear(trozo).Eventos) {
+                var evt = TagEventParser.Parse(fragmento);
+                if (evt == null) continue;
+                var dto = acumulador.Feed(evt.Value);
+                if (dto != null) partidas.Add(dto);
+            }
+        }
+        return partidas;
+    }
+
+    // Las capturas son texto UTF-8 de los bytes leídos como Windows-1252: se
+    // deshace eso para tener cada byte original como un char, igual que lo
+    // entrega el puerto serie con Encoding.Latin1 (load-bearing para 'e').
+    private static string LeerCaptura(string nombre) {
+        string texto = File.ReadAllText(Path.Combine(DirectorioDeEsteFichero(), "..", "Gregal", "Docs", nombre));
+        byte[] bytes = System.Text.CodePagesEncodingProvider.Instance.GetEncoding(1252)!.GetBytes(texto);
+        return System.Text.Encoding.Latin1.GetString(bytes);
+    }
+
+    private static string LeerCapturaMetronia() => LeerCaptura("Volcado Metronia.txt");
+
+    [Fact]
+    public void Feed_ConCapturaRealDeMetronia_DevuelveLasSietePartidasSinRecuperar() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var partidas = ReproducirCaptura(CreateAccumulatorSinT(logger: logger), LeerCapturaMetronia());
+
+        Assert.Equal(Enumerable.Range(1, 7), partidas.Select(p => p.PartidaDia));
+        Assert.DoesNotContain(logger.Warnings, w => w.Contains("estado de partida"));
+        Assert.All(partidas, p => Assert.Null(p.Reclamacion));
+    }
+
+    [Fact]
+    public void Feed_ConCapturaDeMetroniaEmpezadaAMitadDePartida_RecuperaLaPartidaUnoAlLlegarT2() {
+        string captura = LeerCapturaMetronia();
+        var completa = ReproducirCaptura(CreateAccumulatorSinT(), captura);
+
+        // Empezamos a escuchar justo en la 10ª bola de la partida 1: se pierden
+        // T1, la cabecera (precio, cartones, premios) y las 9 primeras *E#.
+        int corte = System.Text.RegularExpressions.Regex.Matches(captura, @"\*E\d+#")[9].Index;
+        var partidas = ReproducirCaptura(CreateAccumulatorSinT(), captura[corte..]);
+
+        Assert.Equal(Enumerable.Range(1, 7), partidas.Select(p => p.PartidaDia));
+        var recuperada = partidas[0];
+        // Las 9 bolas anteriores vuelven gracias a la cadena de estado 'e'
+        // (en otro orden), y se marca en RECLAMACION.
+        Assert.Equal(completa[0].Extracciones, recuperada.Extracciones);
+        Assert.Equal(completa[0].Bolas!.Split(',').Order(), recuperada.Bolas!.Split(',').Order());
+        Assert.Equal("PARTIDA A MEDIAS: Nº DEDUCIDO, SIN CABECERA, BOLAS APROX.", recuperada.Reclamacion);
+        Assert.All(partidas.Skip(1), p => Assert.Null(p.Reclamacion));
+        Assert.Equal(completa[0].CartBingo, recuperada.CartBingo);
+        Assert.Equal(0m, recuperada.Precio); // la cabecera no se puede recuperar
+        Assert.Equal(completa.Skip(1).Select(p => p.Bolas), partidas.Skip(1).Select(p => p.Bolas));
+    }
+
+    private static string DirectorioDeEsteFichero([System.Runtime.CompilerServices.CallerFilePath] string ruta = "") =>
+        Path.GetDirectoryName(ruta)!;
+
+    [Fact]
+    public void Feed_SinCodigoT_EsperaALaSiguienteTYSeGuardaComoLaAnterior() {
+        var acumulador = CreateAccumulatorSinT();
+
+        // La captura empieza a mitad de partida: no llegó su *T#.
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*E20#"));
+        Assert.Null(acumulador.Feed(EventoDe("*F#")));
+        acumulador.Feed(EventoDe("*f#"));
+
+        var recuperada = acumulador.Feed(EventoDe("*T7#"));
+
+        Assert.NotNull(recuperada);
+        Assert.Equal(6, recuperada!.PartidaDia);
+        Assert.Equal("10,20", recuperada.Bolas);
+        Assert.Equal("PARTIDA A MEDIAS: Nº DEDUCIDO, SIN CABECERA", recuperada.Reclamacion);
+
+        // La partida 7 sigue su curso con normalidad.
+        acumulador.Feed(EventoDe("*E5#"));
+        var siguiente = acumulador.Feed(EventoDe("*F#"));
+        Assert.Equal(7, siguiente!.PartidaDia);
+        Assert.Equal("5", siguiente.Bolas);
+        Assert.Null(siguiente.Reclamacion);
+    }
+
+    [Fact]
+    public void Feed_SinCodigoTYSiguienteT1_DescartaLaPartidaConAviso() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(logger: logger);
+
+        acumulador.Feed(EventoDe("*E10#"));
+        acumulador.Feed(EventoDe("*F#"));
+        var resultado = acumulador.Feed(EventoDe("*T1#"));
+
+        Assert.Null(resultado);
+        Assert.Contains(logger.Warnings, w => w.Contains("Se descarta la partida sin T") && w.Contains("10"));
+    }
+
+    [Fact]
+    public void Feed_ConFPerdidoYLlegaF_CierraLaPartida() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(logger: logger);
+
+        acumulador.Feed(EventoDe("*T4#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        // Se pierde el *F#; lo siguiente es el *f# de entre partidas.
+        var dto = acumulador.Feed(EventoDe("*f#"));
+
+        Assert.Equal(4, dto!.PartidaDia);
+        Assert.Equal("10", dto.Bolas);
+        Assert.Contains(logger.Warnings, w => w.Contains("se perdió su *F#"));
+        Assert.Null(acumulador.Feed(EventoDe("*f#"))); // los siguientes *f# no hacen nada
     }
 
     // Construye el payload binario del evento 'e' (sin "última bola") con las
