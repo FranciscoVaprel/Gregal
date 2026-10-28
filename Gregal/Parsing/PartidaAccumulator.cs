@@ -296,8 +296,6 @@ public class PartidaAccumulator {
             // "morralla" que complica sin aportar nada útil). Tratarlos como
             // "no mapeado" inundaría el log sin motivo.
             case 'f':
-                Console.Write("case 'f':");
-                break;
             case 'º':
             case 'G':
             case 'S':
