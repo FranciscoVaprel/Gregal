@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
     Instalador de Gregal (Receptor de Bingo) para una sala nueva.
 
@@ -79,6 +79,16 @@ if (-not (Test-Path $ExePath)) {
     Write-Warn "No se encuentra Gregal.exe en '$InstallDir'."
     Write-Warn "Este script debe ejecutarse desde la carpeta publicada (junto a Gregal.exe)."
     exit 1
+}
+
+# Este script vuelve a preguntar toda la configuración y reescribe
+# appsettings.json: en un PC que ya tiene Gregal, lo normal es actualizar.
+if (Get-Service -Name "GregalReceiverService" -ErrorAction SilentlyContinue) {
+    Write-Warn "Gregal ya está instalado en este PC (existe el servicio 'GregalReceiverService')."
+    Write-Warn "Para actualizarlo SIN perder la configuración de la sala, descomprime la versión nueva"
+    Write-Warn "en otra carpeta y ejecuta Actualizar-Gregal.ps1 desde allí."
+    $reinstalar = Read-Host "¿Reinstalar de todos modos, volviendo a configurar la sala? (s/N)"
+    if ($reinstalar -notmatch "^[sS]") { exit 1 }
 }
 
 $dotnetOk = $false

@@ -25,6 +25,12 @@
     <PackageReference Include="System.IO.Ports" Version="10.0.5" />
   </ItemGroup>
 
+  <!-- Los scripts de instalación/actualización van en la raíz del publish,
+       junto a Gregal.exe (ahí los espera cada script). -->
+  <ItemGroup>
+    <None Include="Deploy\*.ps1" Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Folder Include="Utils\" />
     <Folder Include="Services\" />

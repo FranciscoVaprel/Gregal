@@ -1,0 +1,231 @@
+Respecto MCB:
+
+    Toda esta morralla complica y habrá que ignorar todo A y todo M
+    *M0#*A0#*A000#*M0#*A0#*A000#*M0#*A0#*A000#*A000#
+
+    Al lanzar partida
+    *T1#*M200#*J386400001&BIPLUSE1.255#*L2400#*G000#*B60000#*R351152#*S0000#*A000#*M0#*p38000#*z272327#*y0#*P3201#*U3400#*C200#*V200#
+
+    T numero de partida
+    M a ignorar
+    J  <4 digitos con la longitud de la serie><resto a ignorar>
+    L premio de linea
+    G ignorar
+    B premio de bingo
+    R ignorar
+    S ignorar
+    A ignorar
+    M ignorar
+    p ignorar
+    z ignorar
+    y ignorar
+    P primer carton vendido
+    U ultimo carton vendido
+    C precio en centimos de euro
+    V cartones vendidos
+
+    E<bola extraida>
+    Z<bola borrada>
+    *Y# 
+    *Y<carton premiado tanto de linea como de bingo>#
+    *H# jugando a bingo
+    F fin de partida
+
+############################################################################
+
+Respecto a Metronia:
+    El fichero '7 partidas Metronia.txt' contiene las cpautras realizadas por Jaume en la sala de Metronia, básicamente
+    Lanzamiento de partida
+    #*K2##*T2##*L4800##*B40000##*C200##*P2801##*U3200##*V400##*X00179689##*J3864##*p500##*A15000##*M56#
+    donde:
+    K es el numero de decimales
+    T numero de partida
+    L premio de Linea
+    B premio de bingo
+    C precio en centimos de euro
+    P primer cartón vendido
+    U ultimo cartón vendido
+    V numero de cartones vendidos
+    X<primera serie>[,<segunda serie>] numero de serie, si hay empalme tras la primera va ',' y la segunda serie
+    J longitud de la serie: 3864 es EB y 3870 es EC
+    p es el premios de linea plus
+    A es el premio de Prima
+    M bola tope de prima
+
+    Cada segundo se recibe el *f# típico de entre partidas o la cadena con las 90 bolas *e......#
+
+    las bolas se reciben con *E..# y se borran con *X..# 
+    *Y# indica entrada en comprobacion
+    *D<digito linea ganadora><carton premiado># como siempre el primer digito es la linea premiada y el resto de digitos el numero de carton
+    *H# es jugando a bingo, no aparece en la traza pero posiblemente si volviesen a linea se recibiria en *D#
+    *H<cartón premiado># 
+    *F# fin de partida
+
+
+#######################
+
+
+jax-ws:  (java api for xml web services)
+Sirve para servicios web basados en soap, los que usan wsdl y mucho xml rigido
+
+jax-rs (Java Api for restful web services) ibm
+la rs significa rest services, sirve para crear servicios web estilo rest. los que devuelven json/xml mediante
+urls del lado del servidor
+
+gradle build tool
+
+apache cxf framework para generar clientes y servicios web (tanto soap como rest) para generar cliente en backend
+
+apache maven funciona mediante un archivo de configuración en formato xml llamdo pom.xml project object
+model ahi se definen las dependencias y las fases de compilación
+
+commons-io librerias de utilidades del sistema  ficheros streams y lectores
+commons-lang manejar extras para manipular texto o números
+
+tipos de drivers jdbc: tecnologia para conectar java con bases de datos
+puente  traduce peticiones jdbc a odbc
+api nativa: traduc
+
+log4j herramienta de logging mas famosa de java
+
+apache ant: para hacer builds, no gestiona dependencias, debes bajar los .jar y usa un archivo llamado
+build.xml
+
+servidor de aplicaciones: 
+	full jakarta ee stack:
+		wildfly (antiguo jboss)
+		oracle weblogic
+		ibm websphere
+		eclipse glassfish
+
+contenedores web solo servlets y jsp: solo sirven para ejecutar aplicaciones web básicas, apis rest o paginas dinámicas simples.
+ no soportan la especificacion completa de jakarta ee corporativa 
+	apache tomcat
+	eclipse jetty
+	
+spring es un framework que se basa en la inyeccion de dependencias @Autowired, inversion of control y la programacion
+orientada a aspectos
+Bajo acoplamiento: Los componentes son independientes, lo que facilita modificarlos o reemplazarlos sin romper el código.
+Pruebas más fáciles: Permite crear mocks y realizar pruebas unitarias (unit testing) de forma mucho más sencilla.Menos código repetitivo
+: Ya no es necesario escribir código de fontanería para inicializar clases interconectadas.
+
+spring boot es una evolucion para evitar configurar miles de lineas de xml. te genera una aplicacion lista
+para funcionar con un servidor tomcat embebido dentro.
+
+
+
+┌──────────────────────────────────────────┐
+│  JDK                                     │
+│  javac · jar · javadoc · jdb             │
+│  ┌────────────────────────────────────┐  │
+│  │  JRE                               │  │
+│  │  Librerías: java.lang · java.util  │  │
+│  │             java.io · java.net...  │  │
+│  │  ┌──────────────────────────────┐  │  │
+│  │  │  JVM                         │  │  │
+│  │  │  · Class Loader              │  │  │
+│  │  │  · Bytecode Verifier         │  │  │
+│  │  │  · JIT Compiler              │  │  │
+│  │  │  · Garbage Collector         │  │  │
+│  │  │  · Heap · Stack · Method Area│  │  │
+│  │  └──────────────────────────────┘  │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
+
+
+La familia "JAX-" de Java/Jakarta EE
+
+	JAXB (Java Architecture for XML Binding): Sirve para ligar/mapear XML a objetos Java.
+
+		El proceso de pasar un objeto Java a un archivo XML se llama Marshalling.
+
+		El proceso inverso (de XML a objeto Jav
+a) se llama Unmarshalling.
+
+	JAX-RS (Java API for RESTful Web Services): Sirve para crear servicios web tipo REST (usa anotaciones como @Path, @GET, @POST).
+
+	JAX-WS (Java API for XML Web Services): Sirve para crear servicios web tipo SOAP (basados en XML).
+
+	JAXR (Java API for XML Registries): Una tecnología antigua para interactuar con registros de servicios (como UDDI). 
+	Está prácticamente obsoleta, pero sigue saliendo en los temarios.
+
+JUnit Platform: Es la base sobre la que corren los tests en la JVM. 
+Define la API para que las herramientas (como Eclipse, IntelliJ, Maven o Gradle)
+puedan lanzar las pruebas.
+
+JUnit Jupiter: Es el motor real y la interfaz de programación con la que escribes
+ el código moderno. Contiene las anotaciones que verás abajo.
+
+JUnit Vintage: Sirve para dar soporte hacia atrás y poder ejecutar tests antiguos
+ escritos en JUnit 3 o JUnit 4.
+ 
+@Test: Marca el método como una prueba unitaria. No debe devolver nada (voi
+d) y
+ normalmente no es público (en JUnit 5 basta con que sea de paquete).
+
+@BeforeEach: El método se ejecuta antes de cada uno de los tests de la clase.
+ Se usa para inicializar objetos o limpiar bases de datos en memoria para que cada test empiece de cero. (Equivale al @Before de JUnit 4).
+
+@AfterEach: Se ejecuta después de cada uno de los tests.
+ Se usa para liberar recursos. (Equivale al @After de JUnit 4).
+
+@BeforeAll: Se ejecuta una sola vez, antes de que empiece cualquier test de la clase.
+ Obligatoriamente tiene que ser un método estático (stati
+c). Se usa para configuraciones
+ pesadas (como arrancar un contenedor Docker de test o conectar a una BD pesad
+a).
+
+@AfterAll: Se ejecuta una sola vez, cuando han terminado todos los tests de la clase. También debe ser static.
+
+@Disabled: Sirve para "saltarse" o ignorar una prueba temporalmente sin borrar el código. (Equivale al @Ignore de JUnit 4).
+
+
+¡Cuidado con el orden de los parámetros! A diferencia de otros frameworks, 
+en JUnit el orden estricto es: Assertions.assertEquals(esperado, actual).
+
+Las más comunes que verás en los cuestionarios son:
+
+    assertEquals(esperado, actual): Comprueba que los dos valores sean iguales.
+
+    assertNotEquals(noEsperado, actual): Comprueba que difieran.
+
+    assertTrue(condición) / assertFalse(condición): Evalúan expresiones booleanas.
+
+    assertNull(objeto) / assertNotNull(objeto): Verifican la presencia de valores nulos
+	(muy común al validar si un servicio de Jakarta inyectó bien un Bean CDI).
+
+    assertTimeout(Duration.ofMillis(500), () -> { ... }): Falla si el código que está
+	dentro de la expresión lambda tarda más tiempo del permitido (útil para probar rendimiento o bucles infinitos).
+	
+Creacionales (Creación de objetos):
+ Ocultan cómo se crean los objetos. (Singleton, Factory Method, Abstract Factory, Builder, Prototype).
+
+Estructurales (Composición de clases/objetos):
+ Se enfocan en cómo se unen las clases y objetos para formar estructuras más grandes.
+ (Adapter, Bridge, Composite, Decorator, Facade, Flyweight, Proxy).
+
+De Comportamiento (Interacción y responsabilidades):
+ Se encargan de los algoritmos y la asignación de responsabilidades entre objetos.
+ (Observer, Strategy, Command, Chain of Responsibility, Iterator, State, Template Method, Mediator, Memento, Visitor).
+
+Adapter (Adaptador): Convierte una interfaz incompatible en otra que el
+ cliente espera para poder reutilizar código existente.
+
+Bridge (Puente): Separa la abstracción de su implementación,
+ permitiendo que ambas varíen y evolucionen de forma independiente.
+
+Composite (Objeto compuesto): Organiza objetos en
+ estructuras de árbol para representar jerarquías parte-todo, tratando igual a objetos individuales que a colecciones.
+
+Decorator (Decorador): Añade funcionalidades a un objeto
+ dinámicamente en tiempo de ejecución como alternativa flexible a la herencia.
+
+Facade (Fachad
+a): Proporciona una interfaz única y simplificada
+ para acceder a un subsistema complejo y lleno de clases.
+
+Flyweight (Peso ligero): Comparte objetos de forma eficiente
+ para soportar grandes cantidades de elementos, reduciendo drásticamente el uso de memoria.
+
+Proxy (Representante): Actúa como un intermediario o sustitut
+o de otro objeto para controlar el acceso a él (por seguridad, coste o acceso remoto).
