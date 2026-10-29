@@ -27,6 +27,15 @@ public class HistoricoRepository {
         var dbSettings = _dbSettings.CurrentValue;
         string tableName = ValidateTableName(dbSettings.TableName);
 
+        // No se toca el DTO: si el guardado falla, al fichero de pendientes
+        // debe ir la lista completa.
+        var (bolas, reclamacion, descartadas) = AjustarBolasALaColumna(dto.Bolas, dto.Reclamacion, dbSettings.MaxLongitudBolas);
+        if (descartadas > 0) {
+            _logger.LogWarning("La lista de bolas de la Sala {sala}, Partida {partida} ocupa {longitud} caracteres y la columna BOLAS admite {max}: " +
+                               "se guardan las primeras bolas y se descartan las {descartadas} últimas. Lista completa: {bolasCompletas}",
+                dto.CodSala, dto.PartidaDia, dto.Bolas!.Length, dbSettings.MaxLongitudBolas, descartadas, dto.Bolas);
+        }
+
         await _dbSemaphore.WaitAsync();
         try {
             using (FbConnection connection = new FbConnection(dbSettings.ConnectionString)) {
@@ -102,8 +111,8 @@ public class HistoricoRepository {
                             cmd.Parameters.Add("@LARGO_SERIE", (object?)dto.LargoSerie ?? DBNull.Value);
                             cmd.Parameters.Add("@EXTRACCIONES", (object?)dto.Extracciones ?? DBNull.Value);
                             cmd.Parameters.Add("@GUIABOLAS", (object?)dto.GuiaBolas ?? DBNull.Value);
-                            cmd.Parameters.Add("@RECLAMACION", (object?)dto.Reclamacion ?? DBNull.Value);
-                            cmd.Parameters.Add("@BOLAS", (object?)dto.Bolas ?? DBNull.Value);
+                            cmd.Parameters.Add("@RECLAMACION", (object?)reclamacion ?? DBNull.Value);
+                            cmd.Parameters.Add("@BOLAS", (object?)bolas ?? DBNull.Value);
                             cmd.Parameters.Add("@BOLA_LINEA", (object?)dto.BolaLinea ?? DBNull.Value);
                             cmd.Parameters.Add("@NUM_LINEAS", (object?)dto.NumLineas ?? DBNull.Value);
                             cmd.Parameters.Add("@HORA_LINEA", (object?)dto.HoraLinea ?? DBNull.Value);
@@ -165,6 +174,27 @@ public class HistoricoRepository {
             // pase lo que pase (éxito o error).
             _dbSemaphore.Release();
         }
+    }
+
+    private const string NotaBolasRecortadas = "BOLAS RECORTADAS";
+    private const int MaxReclamacion = 64; // RECLAMACION es CHAR(64)
+
+    // Si "bolas" (lista separada por comas) no cabe en maxLongitud, se queda
+    // con las primeras bolas enteras que quepan y antepone NotaBolasRecortadas
+    // a la reclamación (delante, para que no la corte el límite de 64).
+    // Devuelve también cuántas bolas se han descartado (0 si cabía).
+    public static (string? Bolas, string? Reclamacion, int Descartadas) AjustarBolasALaColumna(
+            string? bolas, string? reclamacion, int maxLongitud) {
+        if (bolas == null || maxLongitud <= 0 || bolas.Length <= maxLongitud) return (bolas, reclamacion, 0);
+
+        int corte = bolas.LastIndexOf(',', maxLongitud);
+        string recortadas = corte > 0 ? bolas[..corte] : "";
+        int descartadas = bolas.Split(',').Length - (recortadas.Length == 0 ? 0 : recortadas.Split(',').Length);
+
+        string nota = string.IsNullOrWhiteSpace(reclamacion) ? NotaBolasRecortadas : NotaBolasRecortadas + " | " + reclamacion.Trim();
+        if (nota.Length > MaxReclamacion) nota = nota[..MaxReclamacion];
+
+        return (recortadas.Length == 0 ? null : recortadas, nota, descartadas);
     }
 
     private static string ValidateTableName(string? tableName) {
