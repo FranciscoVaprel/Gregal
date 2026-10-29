@@ -125,20 +125,17 @@ public class PartidaAccumulator {
         switch (evt.Code) {
             case 'F':
                 return CerrarPartida();
-
             // *f# solo llega entre partidas (comprobado en las 11 partidas de
             // la captura MCB: ninguno entre una T y su F). Si llega con una
             // partida abierta, su *F# se perdió por el camino.
             case 'f' when TieneContenido:
                 _logger.LogWarning("Llega *f# (entre partidas) con una partida abierta: se perdió su *F#. Se cierra la partida.");
                 return CerrarPartida();
-
             case 'T': {
                 var pendiente = ResolverPendienteSinT(evt.Value);
                 Aplicar(evt);
                 return pendiente;
             }
-
             default:
                 Aplicar(evt);
                 return null;

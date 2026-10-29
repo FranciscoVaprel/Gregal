@@ -44,7 +44,6 @@ public class HistoricoRepository {
                         // Construimos la parte de los premios dinámicamente para no escribir 99 líneas a mano
                         string columnasPremios = string.Join(", ", Enumerable.Range(1, 99).Select(i => $"PREMIO{i}"));
                         string parametrosPremios = string.Join(", ", Enumerable.Range(1, 99).Select(i => $"@PR{i}"));
-
                         string sql = $@"UPDATE OR INSERT INTO ""{tableName}"" (
                     COD_SALA, COD_CONC, FECHA_SESION, PARTIDA_DIA, FECHA, PARTIDA_ANUAL, NUM_DECIMALES, TIPO, 
                     HORA_CIERRE, HORA_VENTA, HORA_SORTEO, HORA_FIN, HORA_CIERRE_H, PRECIO, VENTA, CAJA, TASA, 

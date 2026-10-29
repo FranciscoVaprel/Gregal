@@ -50,6 +50,29 @@ Log.Logger = new LoggerConfiguration()
 builder.Logging.ClearProviders();
 builder.Services.AddSerilog();
 
+// Red de seguridad: sin esto, una excepción que se escape de todos los
+// try/catch mata el proceso sin dejar rastro en el log (solo en el Visor de
+// eventos de Windows, que en una sala nadie mira). Se anota y se vacía el log
+// antes de que el proceso termine.
+AppDomain.CurrentDomain.UnhandledException += (_, e) => {
+    Log.Fatal(e.ExceptionObject as Exception,
+        "Excepción no controlada: Gregal se va a cerrar (IsTerminating={terminando}).", e.IsTerminating);
+    Log.CloseAndFlush();
+};
+// Una Task que falla sin que nadie espere su resultado no cierra el proceso,
+// pero el error se perdería sin más.
+TaskScheduler.UnobservedTaskException += (_, e) => {
+    Log.Error(e.Exception, "Excepción no observada en una tarea en segundo plano.");
+    e.SetObserved();
+};
+
+string version = typeof(Program).Assembly
+    .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+    .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+    .FirstOrDefault()?.InformationalVersion ?? "?";
+Log.Information("Gregal {version} arrancando ({modo}).", version,
+    WindowsServiceHelpers.IsWindowsService() ? "servicio de Windows" : "consola");
+
 // 4. Registro de Infraestructura de Datos y Motores de Parseo
 builder.Services.AddSingleton<JsonGregalParser>();
 builder.Services.AddSingleton<CsvGregalParser>();
@@ -74,11 +97,22 @@ if (tagSettings.Enabled) {
 }
 // ====================================================================
 
-var host = builder.Build();
+try {
+    var host = builder.Build();
 
-MostrarBannerDeArranque(builder.Configuration);
+    MostrarBannerDeArranque(builder.Configuration);
 
-host.Run();
+    host.Run();
+}
+catch (Exception ex) {
+    Log.Fatal(ex, "Gregal se ha detenido por un error.");
+    // Código distinto de 0 para que Windows lo trate como un fallo del
+    // servicio y aplique sus acciones de recuperación (sc.exe failure).
+    Environment.ExitCode = 1;
+}
+finally {
+    Log.CloseAndFlush();
+}
 
 // Solo tiene sentido si alguien está mirando una consola real; como servicio
 // de Windows (sc.exe/services.msc) no hay consola que lo muestre, y
