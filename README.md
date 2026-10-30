@@ -117,9 +117,9 @@ guarda la partida al recibir `*F#`. Nunca responde por el puerto.
 | `X` / `J` | Serie (o dos series empalmadas) y código de letra de la serie. MCB no manda `X`: la serie llega en `z` (serie 1) e `y` (serie 2 si hay empalme; `0` si no). |
 | `K` | Decimales de los importes (normalmente 2). |
 | `L` / `B` | Premio de línea y de bingo (céntimos). `p` / `A` / `M` en Metronia: línea plus, prima y bola tope de prima. |
-| `E<bola>` / `Z<bola>` | Bola extraída / bola anulada. |
-| `D<tipo><cartón>` / `u` | Canto de línea / canto de línea erróneo. |
-| `H<cartón>` / `h` | Canto de bingo / canto de bingo erróneo. `H` sin valor marca el paso a la fase de bingo. |
+| `E<bola>` / `Z<bola>` | Bola extraída / bola anulada. `E101` es la bola plus: no cuenta como bola extraída; en `PREMIO17` se guarda cuántas bolas habían salido cuando llegó. |
+| `D<tipo><cartón>` / `u` | Canto de línea / canto de línea erróneo. La hora del primer canto va a `HORA_LINEA`. |
+| `H<cartón>` / `h` | Canto de bingo / canto de bingo erróneo. La hora del primer canto va a `HORA_BINGO`. `H` sin valor marca el paso a la fase de bingo. |
 | `Y<cartón>` | Canto en el formato más reciente: línea antes del `H` sin valor, bingo después. |
 | `e<datos binarios>` | Estado completo de la partida (bolas salidas), cada segundo durante la partida. |
 | `f` | Latido entre partidas, cada segundo. |
@@ -136,7 +136,7 @@ Comportamiento ante situaciones reales:
 - **Se pierde un `*F#`:** el siguiente `*f#` cierra la partida.
 - **Tramas dañadas:** un `#` perdido no mezcla dos eventos; los valores con
   basura no se interpretan (se avisa en el log); una bola repetida o fuera de
-  1-90 se ignora; un evento `e` con checksum incorrecto se descarta.
+  1-90 (salvo la bola plus, `E101`) se ignora; un evento `e` con checksum incorrecto se descarta.
 
 ## Cómo se guarda en la base de datos
 

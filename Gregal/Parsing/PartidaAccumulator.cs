@@ -39,6 +39,12 @@ public class PartidaAccumulator {
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
     private readonly TimeProvider _reloj;
 
+    // Bola plus: "*E101#". Su valor (bolas salidas hasta ese momento) va a
+    // PREMIO17 = Premios[16]. Es un número de bolas, no un importe: no se
+    // divide entre 10^decimales en Finalizar.
+    private const int BolaPlus = 101;
+    private const int IndicePremioBolaPlus = 16;
+
     private HistoricoDTO _dto = new();
 
     // Bolas salidas, en el orden real de llegada (mezcla de *E# en tiempo
@@ -254,13 +260,21 @@ public class PartidaAccumulator {
                 break;
 
             case 'E': {
-                // Confirmado con una captura real del fabricante MCB
-                // ("VolcadoMCB.txt", 2026-10-14): valores fuera de 1-90
-                // (p.ej. "*E101#") aparecen como ruido del hardware — la
-                // propia foto 'e' que llega justo antes y después es idéntica,
-                // confirmando que no es una bola real. Se descartan en vez de
-                // dejar que corrompan Bolas con un número imposible.
                 int bola = ParseInt(evt.Code, evt.Value);
+
+                // "*E101#" es la bola plus (aclarado por el usuario
+                // 2026-10-30; antes se tomaba por ruido porque no cambia la
+                // foto 'e'): no es una bola extraída ni cuenta como tal, pero
+                // se anota en PREMIO17 cuántas bolas habían salido en ese
+                // momento. En la captura MCB llega como mucho una vez por
+                // partida; si se repitiera, vale la primera.
+                if (bola == BolaPlus) {
+                    _dto.Premios[IndicePremioBolaPlus] ??= _bolasOrden.Count;
+                    break;
+                }
+
+                // Cualquier otro valor fuera de 1-90 es ruido del hardware: se
+                // descarta en vez de dejar que corrompa Bolas.
                 if (bola is < 1 or > 90) break;
 
                 // Una bola no puede salir dos veces en la misma partida (salvo
@@ -406,8 +420,16 @@ public class PartidaAccumulator {
     // la lógica, así que se descarta tras separarlo del número de cartón.
     private void AplicarCantoLinea(string valor) {
         int carton = QuitarDigitoDeTipo('D', valor);
-        if (carton > 0) RegistrarCantoLinea(carton);
+        if (carton <= 0) return;
+        RegistrarCantoLinea(carton);
+        // HORA_LINEA: la del primer canto de línea (decidido con el usuario
+        // 2026-10-30: solo con *D<cartón>#, no con *L#, que es el importe y
+        // llega al inicio de la partida).
+        _dto.HoraLinea ??= HoraActual();
     }
+
+    private string HoraActual() =>
+        _reloj.GetLocalNow().DateTime.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
     private void RevertirCantoLinea(string valor) {
         int carton = QuitarDigitoDeTipo('u', valor);
@@ -419,7 +441,10 @@ public class PartidaAccumulator {
         // BolaLinea no se puede recalcular con precisión si queda algún otro
         // cartón válido (no guardamos en qué bola cantó cada uno por
         // separado); se deja como estaba salvo que ya no quede ninguno.
-        if (_cartonesLinea.Count == 0) _dto.BolaLinea = null;
+        if (_cartonesLinea.Count == 0) {
+            _dto.BolaLinea = null;
+            _dto.HoraLinea = null;
+        }
         _lineaTentativa = null;
     }
 
@@ -436,7 +461,10 @@ public class PartidaAccumulator {
     // transformar.
     private void AplicarCantoBingo(string valor) {
         int carton = ParseInt('H', valor);
-        if (carton > 0) RegistrarCantoBingo(carton);
+        if (carton <= 0) return;
+        RegistrarCantoBingo(carton);
+        // HORA_BINGO: la del primer canto de bingo (*H<cartón>#, no *B#).
+        _dto.HoraBingo ??= HoraActual();
     }
 
     // *H# sin valor: marca la entrada en la fase de bingo (confirmado en las
@@ -464,8 +492,18 @@ public class PartidaAccumulator {
         int carton = ParseInt('Y', valor);
         if (carton <= 0) return;
 
-        if (_faseBingo) RegistrarCantoBingo(carton);
-        else RegistrarCantoLinea(carton);
+        // MCB (Blanes, captura del 2026-10-29) canta línea y bingo solo así,
+        // nunca con *D<cartón>#/*H<cartón>#: sin esto HORA_LINEA/HORA_BINGO
+        // quedarían siempre a NULL en esas salas (decidido con el usuario
+        // 2026-10-30). Mismo criterio que D/H: vale la hora del primer canto.
+        if (_faseBingo) {
+            RegistrarCantoBingo(carton);
+            _dto.HoraBingo ??= HoraActual();
+        }
+        else {
+            RegistrarCantoLinea(carton);
+            _dto.HoraLinea ??= HoraActual();
+        }
     }
 
     private void RevertirCantoBingo(string valor) {
@@ -475,7 +513,10 @@ public class PartidaAccumulator {
         _cartonesBingo.Remove(carton);
         _dto.CartBingo = _cartonesBingo.Count > 0 ? string.Join(",", _cartonesBingo) : null;
         _dto.NumBingos = _cartonesBingo.Count;
-        if (_cartonesBingo.Count == 0) _dto.BolaBingo = null;
+        if (_cartonesBingo.Count == 0) {
+            _dto.BolaBingo = null;
+            _dto.HoraBingo = null;
+        }
         _bingoTentativo = null;
     }
 
@@ -584,9 +625,9 @@ public class PartidaAccumulator {
         // las 7 partidas reales, así que no hay forma de confirmar si también
         // va en céntimos; se deja como estaba hasta tener evidencia real.
         //
-        // M (bola tope de prima, PremioCodeMap["M"]) se queda en Premios pero
-        // es un número de bola, no un importe — se excluye explícitamente de
-        // la conversión para no dividirlo por error.
+        // M (bola tope de prima, PremioCodeMap["M"]) y la bola plus (PREMIO17)
+        // se quedan en Premios pero son números de bola, no importes — se
+        // excluyen explícitamente de la conversión para no dividirlos por error.
         int decimales = _dto.NumDecimales ?? 2;
         decimal divisor = (decimal)Math.Pow(10, decimales);
         _dto.Precio /= divisor;
@@ -595,7 +636,7 @@ public class PartidaAccumulator {
         _dto.Venta = _dto.Vendidos * _dto.Precio;
         int? indiceBolaTopePrima = _settings.CurrentValue.PremioCodeMap.TryGetValue("M", out int indiceM) ? indiceM : null;
         for (int i = 0; i < _dto.Premios.Length; i++) {
-            if (i == indiceBolaTopePrima) continue;
+            if (i == indiceBolaTopePrima || i == IndicePremioBolaPlus) continue;
             if (_dto.Premios[i].HasValue) _dto.Premios[i] = _dto.Premios[i]!.Value / divisor;
         }
 

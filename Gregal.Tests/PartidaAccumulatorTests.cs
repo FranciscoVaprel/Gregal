@@ -338,8 +338,50 @@ public class PartidaAccumulatorTests {
 
     // Hora local fija para los tests (zona UTC para que GetLocalNow devuelva tal cual).
     private sealed class RelojFijo(DateTime hora) : TimeProvider {
-        public override DateTimeOffset GetUtcNow() => new(hora, TimeSpan.Zero);
+        public DateTime Hora { get; set; } = hora;
+        public override DateTimeOffset GetUtcNow() => new(Hora, TimeSpan.Zero);
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
+
+    [Fact]
+    public void Feed_ConCantosDeLineaYBingo_GuardaLaHoraDeCadaCanto() {
+        var reloj = new RelojFijo(new DateTime(2026, 10, 30, 18, 0, 0));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
+
+        acumulador.Feed(EventoDe("*T5#"));
+        acumulador.Feed(EventoDe("*L9000#"));  // importes: no marcan ninguna hora
+        acumulador.Feed(EventoDe("*B75000#"));
+        acumulador.Feed(EventoDe("*E10#"));
+        reloj.Hora = new DateTime(2026, 10, 30, 18, 5, 10);
+        acumulador.Feed(EventoDe("*D12363#"));
+        reloj.Hora = new DateTime(2026, 10, 30, 18, 6, 0);
+        acumulador.Feed(EventoDe("*D22940#")); // segundo ganador: se queda la hora del primero
+        acumulador.Feed(EventoDe("*H#"));
+        reloj.Hora = new DateTime(2026, 10, 30, 18, 12, 30);
+        acumulador.Feed(EventoDe("*H2264#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("18:00:00", dto!.HoraVenta);
+        Assert.Equal("18:05:10", dto.HoraLinea);
+        Assert.Equal("18:12:30", dto.HoraBingo);
+    }
+
+    [Fact]
+    public void Feed_ConCantoErroneoYSinOtroGanador_BorraLaHora() {
+        var reloj = new RelojFijo(new DateTime(2026, 10, 30, 18, 0, 0));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
+
+        acumulador.Feed(EventoDe("*T5#"));
+        acumulador.Feed(EventoDe("*D1717#"));
+        acumulador.Feed(EventoDe("*u1717#"));
+        acumulador.Feed(EventoDe("*H1400#"));
+        acumulador.Feed(EventoDe("*h1400#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Null(dto!.HoraLinea);
+        Assert.Null(dto.HoraBingo);
     }
 
     [Fact]
@@ -425,6 +467,10 @@ public class PartidaAccumulatorTests {
 
         Assert.Equal(Enumerable.Range(1, 11), partidas.Select(p => p.PartidaDia));
         Assert.DoesNotContain(logger.Warnings, w => w.Contains("estado de partida"));
+
+        // Bola plus (*E101#): en PREMIO17, las bolas salidas en ese momento.
+        Assert.Equal(new decimal?[] { null, 41, null, 6, null, null, 57, 26, null, 6, null },
+            partidas.Select(p => p.Premios[16]));
 
         // VENTA = VENDIDOS x PRECIO (2,00 en todas las partidas de la captura).
         Assert.Equal(new[] { 400m, 200m, 100m, 500m, 1628m, 2200m, 3300m, 7128m, 2228m, 7728m, 2700m },
@@ -787,6 +833,32 @@ public class PartidaAccumulatorTests {
         Assert.Equal(1, dto.NumBingos);
     }
 
+    // Secuencia real de MCB Blanes (captura 2026-10-29, partida 1): la línea
+    // y el bingo llegan solo como *Y<cartón>#, precedidos de un *Y# suelto.
+    [Fact]
+    public void Feed_ConCantosConEventoY_GuardaLaHoraDeCadaCanto() {
+        var reloj = new RelojFijo(new DateTime(2026, 10, 29, 17, 13, 30));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
+
+        acumulador.Feed(EventoDe("*T1#"));
+        acumulador.Feed(EventoDe("*E26#"));
+        acumulador.Feed(EventoDe("*Y#"));
+        reloj.Hora = new DateTime(2026, 10, 29, 17, 15, 5);
+        acumulador.Feed(EventoDe("*Y3383#"));
+        acumulador.Feed(EventoDe("*H#"));
+        acumulador.Feed(EventoDe("*E48#"));
+        acumulador.Feed(EventoDe("*Y#"));
+        reloj.Hora = new DateTime(2026, 10, 29, 17, 17, 40);
+        acumulador.Feed(EventoDe("*Y3371#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("3383", dto!.CartLinea);
+        Assert.Equal("3371", dto.CartBingo);
+        Assert.Equal("17:15:05", dto.HoraLinea);
+        Assert.Equal("17:17:40", dto.HoraBingo);
+    }
+
     [Fact]
     public void Feed_ConEventoYSinValor_NoTieneEfectoEnElDto() {
         var acumulador = CreateAccumulator();
@@ -816,18 +888,33 @@ public class PartidaAccumulatorTests {
 
     [Fact]
     public void Feed_ConBolaFueraDeRango_SeIgnoraComoRuido() {
-        // Confirmado con una captura real del fabricante MCB: "*E101#"
-        // aparece como ruido del hardware (la bola 101 no existe).
         var acumulador = CreateAccumulator();
 
         acumulador.Feed(EventoDe("*E45#"));
-        acumulador.Feed(EventoDe("*E101#"));
+        acumulador.Feed(EventoDe("*E91#"));
         acumulador.Feed(EventoDe("*E0#"));
         var dto = acumulador.Feed(EventoDe("*F#"));
 
         Assert.NotNull(dto);
         Assert.Equal("45", dto!.Bolas);
         Assert.Equal(1, dto.Extracciones);
+        Assert.Null(dto.Premios[16]);
+    }
+
+    [Fact]
+    public void Feed_ConBolaPlus_NoCuentaComoBolaYAnotaEnPremio17LasBolasSalidas() {
+        var acumulador = CreateAccumulator(); // sin *K#: se asumen 2 decimales
+
+        acumulador.Feed(EventoDe("*E45#"));
+        acumulador.Feed(EventoDe("*E7#"));
+        acumulador.Feed(EventoDe("*E101#")); // bola plus tras 2 bolas
+        acumulador.Feed(EventoDe("*E20#"));
+        acumulador.Feed(EventoDe("*E101#")); // repetida: vale la primera
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("45,7,20", dto!.Bolas);
+        Assert.Equal(3, dto.Extracciones);
+        Assert.Equal(2m, dto.Premios[16]); // PREMIO17, sin dividir entre 100
     }
 
     // Confirmado (2026-10-14, cuarta ronda): hay dos fabricantes distintos
