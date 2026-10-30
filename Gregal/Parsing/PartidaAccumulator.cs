@@ -37,6 +37,7 @@ namespace Gregal.Parsing;
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
     private readonly IOptionsMonitor<TagProtocolSettings> _settings;
+    private readonly TimeProvider _reloj;
 
     private HistoricoDTO _dto = new();
 
@@ -116,9 +117,11 @@ public class PartidaAccumulator {
     // partida y se guarda como la anterior (T-1). No se reinicia en Reset().
     private HistoricoDTO? _pendienteSinT;
 
-    public PartidaAccumulator(ILogger<PartidaAccumulator> logger, IOptionsMonitor<TagProtocolSettings> settings) {
+    // reloj: solo para tests (hora fija); en producción, la hora local del PC.
+    public PartidaAccumulator(ILogger<PartidaAccumulator> logger, IOptionsMonitor<TagProtocolSettings> settings, TimeProvider? reloj = null) {
         _logger = logger;
         _settings = settings;
+        _reloj = reloj ?? TimeProvider.System;
     }
 
     public HistoricoDTO? Feed(TagEvent evt) {
@@ -197,9 +200,19 @@ public class PartidaAccumulator {
             case 'V':
                 _dto.Vendidos = ParseInt(evt.Code, evt.Value);
                 break;
-            case 'T':
+            case 'T': {
                 _dto.PartidaDia = ParseInt(evt.Code, evt.Value);
+                // T marca el inicio de la partida: FECHA (TIMESTAMP) lleva la
+                // fecha y hora de ese momento, y HORA_VENTA/HORA_CIERRE (TIME)
+                // solo la hora. Una partida sin T (captura empezada a mitad)
+                // se queda sin ellas, igual que sin el resto de la cabecera.
+                DateTime inicio = _reloj.GetLocalNow().DateTime;
+                _dto.Fecha = inicio;
+                string hora = inicio.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                _dto.HoraVenta = hora;
+                _dto.HoraCierre = hora;
                 break;
+            }
 
             // --- Campos confirmados el 2026-10-14 contra tickets reales ---
             case 'K':
@@ -283,22 +296,36 @@ public class PartidaAccumulator {
                 AplicarEventoY(evt.Value);
                 break;
 
+            // MCB no manda *X#: la serie viaja en *z# (serie 1) y *y# (serie 2
+            // si hay empalme, 0 si no). Comprobado 2026-10-30 con las 11
+            // partidas de la captura MCB: y aparece justo cuando P..U da la
+            // vuelta a la serie de 3864 cartones (J3864) y los vendidos cuadran
+            // (partida 5: P3801-U750 = 64 + 750 = V814, z272327 y272328), y la
+            // z de la partida siguiente es esa y. En Metronia no aparecen.
+            case 'z':
+                if (_settings.CurrentValue.Fabricante == Fabricante.MCB) {
+                    _dto.Serie1 = SerieOVacia('z', evt.Value);
+                }
+                break;
+            case 'y':
+                if (_settings.CurrentValue.Fabricante == Fabricante.MCB) {
+                    _dto.Serie2 = SerieOVacia('y', evt.Value);
+                }
+                break;
+
             // 'f' (heartbeat "entre partidas") y 'º' (uno por cada *E#) están
             // confirmados pero no tienen efecto en el DTO — el operador de la
             // sala confirmó que 'º' no corresponde a ningún campo de
             // HISTORICO, así que ignorarlo es la respuesta definitiva, no un
             // parche mientras se investiga. 'G', 'S', 'R' (premios sin
-            // confirmar) y las versiones en minúscula 'z'/'y' se ignoran por
-            // instrucción explícita del operador (2026-10-14, tercera ronda:
-            // "morralla" que complica sin aportar nada útil). Tratarlos como
-            // "no mapeado" inundaría el log sin motivo.
+            // confirmar) se ignoran por instrucción explícita del operador
+            // (2026-10-14, tercera ronda: "morralla" que complica sin aportar
+            // nada útil). Tratarlos como "no mapeado" inundaría el log sin motivo.
             case 'f':
             case 'º':
             case 'G':
             case 'S':
             case 'R':
-            case 'z':
-            case 'y':
                 break;
 
             default:
@@ -318,6 +345,12 @@ public class PartidaAccumulator {
         if (partes.Length > 1) {
             _dto.Serie2 = ParseIntOrNull('X', partes[1]);
         }
+    }
+
+    // Serie de *z#/*y# (MCB): "0" significa "no hay" (y0 = sin empalme).
+    private int? SerieOVacia(char code, string valor) {
+        int? serie = ParseIntOrNull(code, valor);
+        return serie > 0 ? serie : null;
     }
 
     // Evento Z: elimina una bola ya marcada como salida (corrección de una
@@ -557,6 +590,9 @@ public class PartidaAccumulator {
         int decimales = _dto.NumDecimales ?? 2;
         decimal divisor = (decimal)Math.Pow(10, decimales);
         _dto.Precio /= divisor;
+        // VENTA: el protocolo no la manda; se calcula con el precio ya en euros.
+        // Sin cabecera (partida sin T) queda a 0, igual que precio y vendidos.
+        _dto.Venta = _dto.Vendidos * _dto.Precio;
         int? indiceBolaTopePrima = _settings.CurrentValue.PremioCodeMap.TryGetValue("M", out int indiceM) ? indiceM : null;
         for (int i = 0; i < _dto.Premios.Length; i++) {
             if (i == indiceBolaTopePrima) continue;

@@ -4,6 +4,16 @@ public class HistoricoRepositoryTests {
     private static readonly string NoventaBolas = string.Join(",", Enumerable.Range(1, 90)); // 260 caracteres
 
     [Fact]
+    public void HoraFin_SiNoVieneInformada_UsaLaHoraDelGuardado() {
+        Assert.Equal("21:03:07", HistoricoRepository.HoraFinAlGuardar(null, new DateTime(2026, 10, 30, 21, 3, 7)));
+    }
+
+    [Fact]
+    public void HoraFin_SiYaVieneInformada_LaRespeta() {
+        Assert.Equal("20:59:00", HistoricoRepository.HoraFinAlGuardar("20:59:00", new DateTime(2026, 10, 30, 21, 3, 7)));
+    }
+
+    [Fact]
     public void AjustarBolas_SiCabe_NoTocaNada() {
         var (bolas, reclamacion, descartadas) = HistoricoRepository.AjustarBolasALaColumna("5,10,20", null, 255);
 

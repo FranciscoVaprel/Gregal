@@ -112,9 +112,9 @@ guarda la partida al recibir `*F#`. Nunca responde por el puerto.
 
 | Código | Significado |
 |---|---|
-| `T` | Número de partida del día. |
-| `C` / `V` / `P` / `U` | Precio del cartón (céntimos), cartones vendidos, primer y último cartón. |
-| `X` / `J` | Serie (o dos series empalmadas) y código de letra de la serie. |
+| `T` | Número de partida del día. Marca el inicio de la partida: `FECHA` toma la fecha y hora de ese momento, y `HORA_VENTA` y `HORA_CIERRE` la hora. `HORA_FIN` es la hora del PC al guardar la partida. |
+| `C` / `V` / `P` / `U` | Precio del cartón (céntimos), cartones vendidos, primer y último cartón. `VENTA` no llega: Gregal la calcula como vendidos × precio. |
+| `X` / `J` | Serie (o dos series empalmadas) y código de letra de la serie. MCB no manda `X`: la serie llega en `z` (serie 1) e `y` (serie 2 si hay empalme; `0` si no). |
 | `K` | Decimales de los importes (normalmente 2). |
 | `L` / `B` | Premio de línea y de bingo (céntimos). `p` / `A` / `M` en Metronia: línea plus, prima y bola tope de prima. |
 | `E<bola>` / `Z<bola>` | Bola extraída / bola anulada. |

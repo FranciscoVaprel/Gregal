@@ -336,6 +336,54 @@ public class PartidaAccumulatorTests {
         Assert.Null(resultado); // la nueva partida empieza limpia, aún acumulando
     }
 
+    // Hora local fija para los tests (zona UTC para que GetLocalNow devuelva tal cual).
+    private sealed class RelojFijo(DateTime hora) : TimeProvider {
+        public override DateTimeOffset GetUtcNow() => new(hora, TimeSpan.Zero);
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
+
+    [Fact]
+    public void Feed_ConEventoT_AsignaFechaYHorasDeVentaYCierreAlInicio() {
+        var inicio = new DateTime(2026, 10, 30, 17, 45, 12);
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), new RelojFijo(inicio));
+
+        acumulador.Feed(EventoDe("*T1234#"));
+        acumulador.Feed(EventoDe("*E5#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal(inicio, dto!.Fecha);
+        Assert.Equal("17:45:12", dto.HoraVenta);
+        Assert.Equal("17:45:12", dto.HoraCierre);
+        Assert.Null(dto.HoraFin); // la pone el repositorio al guardar
+    }
+
+    [Fact]
+    public void Feed_SinEventoT_NoTieneFechaNiHorasDeInicio() {
+        var acumulador = CreateAccumulatorSinT();
+
+        acumulador.Feed(EventoDe("*E5#"));
+        acumulador.Feed(EventoDe("*F#"));
+        var recuperada = acumulador.Feed(EventoDe("*T8#"));
+
+        Assert.Null(recuperada!.Fecha);
+        Assert.Null(recuperada.HoraVenta);
+        Assert.Null(recuperada.HoraCierre);
+    }
+
+    [Fact]
+    public void Feed_ConMetronia_IgnoraZyY() {
+        var acumulador = CreateAccumulator(); // Fabricante por defecto: Metronia
+
+        acumulador.Feed(EventoDe("*X00179689#"));
+        acumulador.Feed(EventoDe("*z272327#"));
+        acumulador.Feed(EventoDe("*y272328#"));
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal(179689, dto!.Serie1);
+        Assert.Null(dto.Serie2);
+    }
+
     [Fact]
     public void Feed_AsumeFechaSesionDeHoy() {
         var dto = FeedEjemplo(CreateAccumulator());
@@ -377,6 +425,20 @@ public class PartidaAccumulatorTests {
 
         Assert.Equal(Enumerable.Range(1, 11), partidas.Select(p => p.PartidaDia));
         Assert.DoesNotContain(logger.Warnings, w => w.Contains("estado de partida"));
+
+        // VENTA = VENDIDOS x PRECIO (2,00 en todas las partidas de la captura).
+        Assert.Equal(new[] { 400m, 200m, 100m, 500m, 1628m, 2200m, 3300m, 7128m, 2228m, 7728m, 2700m },
+            partidas.Select(p => p.Venta));
+
+        // MCB manda la serie en *z# (serie 1) y *y# (serie 2 si hay empalme).
+        Assert.Equal(new int?[] { 272327, 272327, 272327, 272327, 272327, 272328, 272328, 272328, 272329, 272330, 272331 },
+            partidas.Select(p => p.Serie1));
+        Assert.Equal(new int?[] { null, null, null, null, 272328, null, null, 272329, 272330, 272331, null },
+            partidas.Select(p => p.Serie2));
+        // La letra de la serie (J3864 -> EB) también va a la segunda serie cuando la hay.
+        Assert.All(partidas, p => Assert.Equal("EB", p.Letra1));
+        Assert.Equal("EB", partidas[4].Letra2);
+        Assert.Null(partidas[5].Letra2);
         // La 11 se cierra sin ninguna bola (la captura acaba ahí), pero con su T.
         Assert.All(partidas.Take(10), p => Assert.NotNull(p.Bolas));
         Assert.Null(partidas[10].Bolas);
@@ -595,6 +657,7 @@ public class PartidaAccumulatorTests {
         Assert.Equal(2, dto.NumDecimales);
         Assert.Equal(2m, dto.Precio); // *C200# = 200 céntimos
         Assert.Equal(750, dto.Vendidos);
+        Assert.Equal(1500m, dto.Venta); // 750 cartones x 2,00
         Assert.Equal(2051, dto.Del1);
         Assert.Equal(2800, dto.Al1);
         Assert.Equal(179689, dto.Serie1);
