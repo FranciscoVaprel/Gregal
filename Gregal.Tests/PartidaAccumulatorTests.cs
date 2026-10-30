@@ -387,17 +387,21 @@ public class PartidaAccumulatorTests {
     [Fact]
     public void Feed_ConEventoT_AsignaFechaYHorasDeVentaYCierreAlInicio() {
         var inicio = new DateTime(2026, 10, 30, 17, 45, 12);
+        var reloj = new RelojFijo(inicio);
         var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
-            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), new RelojFijo(inicio));
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
 
         acumulador.Feed(EventoDe("*T1234#"));
         acumulador.Feed(EventoDe("*E5#"));
+        reloj.Hora = new DateTime(2026, 10, 30, 17, 51, 40);
         var dto = acumulador.Feed(EventoDe("*F#"));
 
         Assert.Equal(inicio, dto!.Fecha);
         Assert.Equal("17:45:12", dto.HoraVenta);
         Assert.Equal("17:45:12", dto.HoraCierre);
-        Assert.Null(dto.HoraFin); // la pone el repositorio al guardar
+        // HORA_FIN y la fecha de sesión: las del cierre (*F#), según el reloj.
+        Assert.Equal("17:51:40", dto.HoraFin);
+        Assert.Equal("2026-10-30", dto.FechaSesion);
     }
 
     [Fact]

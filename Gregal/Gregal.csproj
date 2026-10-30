@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -31,6 +31,12 @@
        junto a Gregal.exe (ahí los espera cada script). -->
   <ItemGroup>
     <None Include="Deploy\*.ps1" Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Parser del protocolo tag, DTO y paso a columnas de HISTORICO: compartido
+       con BingoHistoricoEditor (importar un log de Gregal). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Gregal.Protocolo\Gregal.Protocolo.csproj" />
   </ItemGroup>
 
   <ItemGroup>

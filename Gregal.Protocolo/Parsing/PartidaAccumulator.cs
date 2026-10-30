@@ -32,11 +32,17 @@ namespace Gregal.Parsing;
 // como ruido ("*M0#*A0#*A000#...", varias veces entre cada bola) en vez de
 // una vez por partida con un importe real. No es una contradicción entre las
 // dos capturas, son máquinas distintas. Se decide por configuración con
-// TagProtocolSettings.Fabricante (ver AplicarSiEsPremioMapeado): con MCB,
+// ReglasProtocoloTag.Fabricante (ver AplicarSiEsPremioMapeado): con MCB,
 // A/M/p se ignoran en silencio aunque estén en PremioCodeMap.
+//
+// Vive en la librería Gregal.Protocolo: Gregal lo alimenta desde el puerto
+// serie y ReproductorLogGregal desde las líneas "Fragmento tag recibido" de un
+// log (BingoHistoricoEditor, importar log). Toda hora sale de _reloj, nunca del
+// reloj del sistema directamente, para que al reproducir un log las horas y la
+// fecha de sesión sean las del log.
 public class PartidaAccumulator {
     private readonly ILogger<PartidaAccumulator> _logger;
-    private readonly IOptionsMonitor<TagProtocolSettings> _settings;
+    private readonly IOptionsMonitor<ReglasProtocoloTag> _settings;
     private readonly TimeProvider _reloj;
 
     // Bola plus: "*E101#". Su valor (bolas salidas hasta ese momento) va a
@@ -123,8 +129,10 @@ public class PartidaAccumulator {
     // partida y se guarda como la anterior (T-1). No se reinicia en Reset().
     private HistoricoDTO? _pendienteSinT;
 
-    // reloj: solo para tests (hora fija); en producción, la hora local del PC.
-    public PartidaAccumulator(ILogger<PartidaAccumulator> logger, IOptionsMonitor<TagProtocolSettings> settings, TimeProvider? reloj = null) {
+    // reloj: en el servicio, la hora local del PC; en los tests, una hora fija;
+    // al reproducir un log, la hora de cada línea. settings: Gregal pasa su
+    // IOptionsMonitor<TagProtocolSettings> (IOptionsMonitor es covariante).
+    public PartidaAccumulator(ILogger<PartidaAccumulator> logger, IOptionsMonitor<ReglasProtocoloTag> settings, TimeProvider? reloj = null) {
         _logger = logger;
         _settings = settings;
         _reloj = reloj ?? TimeProvider.System;
@@ -153,6 +161,14 @@ public class PartidaAccumulator {
 
     private bool TieneContenido =>
         _bolasOrden.Count > 0 || _cartonesLinea.Count > 0 || _cartonesBingo.Count > 0;
+
+    /// <summary>
+    /// Hay una partida empezada (con T o con bolas/cantos) que todavía no se ha
+    /// cerrado, o una cerrada sin T que espera la T siguiente para tener
+    /// número. Lo usa ReproductorLogGregal para avisar de las partidas que un
+    /// reinicio de Gregal o el final del log dejaron a medias.
+    /// </summary>
+    public bool HayPartidaEnCurso => _dto.PartidaDia > 0 || TieneContenido || _pendienteSinT != null;
 
     private HistoricoDTO? CerrarPartida() {
         bool conT = _dto.PartidaDia > 0;
@@ -601,11 +617,18 @@ public class PartidaAccumulator {
         _dto.CodSala = settings.DefaultCodSala;
         _dto.CodConc = settings.DefaultCodConc;
 
-        // FechaSesion: el protocolo no la lleva; se asume la fecha de hoy en
-        // el momento de cerrar la partida.
+        // FechaSesion: el protocolo no la lleva; se asume la fecha del momento
+        // de cerrar la partida (la del reloj: al reproducir un log, la del log).
+        DateTime cierre = _reloj.GetLocalNow().DateTime;
         if (string.IsNullOrWhiteSpace(_dto.FechaSesion)) {
-            _dto.FechaSesion = DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            _dto.FechaSesion = cierre.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
+
+        // HORA_FIN: la hora de cierre de la partida (*F#, o el *f# que la
+        // cierra si se perdió). Antes la ponía HistoricoRepository al guardar,
+        // que es lo mismo con milisegundos de diferencia salvo en una partida
+        // sin T, que se guarda al llegar la T siguiente (2026-10-30).
+        _dto.HoraFin ??= cierre.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
         // Letra de edición (ver AplicarLetraSerie): se aplica aquí, ya con
         // Serie1/Serie2 definitivos, en vez de al llegar el evento J.

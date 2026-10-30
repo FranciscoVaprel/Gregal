@@ -78,6 +78,10 @@ builder.Services.AddSingleton<JsonGregalParser>();
 builder.Services.AddSingleton<CsvGregalParser>();
 builder.Services.AddSingleton<GregalParserEngine>();
 builder.Services.AddSingleton<HistoricoRepository>();
+// PartidaAccumulator (librería Gregal.Protocolo) solo conoce ReglasProtocoloTag,
+// la parte de TagProtocolSettings que interpreta los eventos.
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<ReglasProtocoloTag>>(sp =>
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<TagProtocolSettings>>());
 builder.Services.AddSingleton<PartidaAccumulator>();
 
 // ====================================================================
