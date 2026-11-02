@@ -15,8 +15,7 @@ dotnet build                                   # build the whole solution
 dotnet run --project Gregal                    # run the service as a console app
 dotnet test                                    # run all tests
 dotnet test --filter "FullyQualifiedName~JsonParserTests"   # run a single test/class
-dotnet publish Gregal -c Release -p:PublishProfile=FolderProfile   # publish (win-x64, framework-dependent)
-.\Instalador\Crear-Instalador.ps1              # publish + Inno Setup -> Instalador\Output\Gregal-Setup-<Version>.exe
+.\Instalador\Crear-Instalador.ps1              # publish (win-x64, self-contained) + Inno Setup -> Instalador\Output\Gregal-Setup-<Version>.exe
 ```
 
 There is no separate lint step; `dotnet build` surfaces nullable/analyzer warnings (`Nullable` is enabled).
@@ -113,7 +112,7 @@ Two databases, on purpose: `Gregal/Data/GREGAL_EMPTY.FDB` is the **versioned, al
 
 ### Deployment
 
-`Deploy/Instalar-Gregal.ps1` installs Gregal on a new sala's PC from a published folder: checks for the .NET 10 runtime, prompts for network/serial/DB settings, rewrites `appsettings.json` in place (regex-based, preserving its `//` comments rather than a JSON round-trip), registers and starts the Windows Service, opens the TCP firewall port, and tails the resulting log. It warns (and asks) if the service already exists, since it re-asks every setting.
+`Deploy/Instalar-Gregal.ps1` installs Gregal on a new sala's PC from a published folder: checks for the .NET 10 runtime (bundled in the folder by the self-contained publish; only older framework-dependent publishes need it installed), prompts for network/serial/DB settings, rewrites `appsettings.json` in place (regex-based, preserving its `//` comments rather than a JSON round-trip), registers and starts the Windows Service, opens the TCP firewall port, and tails the resulting log. It warns (and asks) if the service already exists, since it re-asks every setting.
 
 **Preferred distribution: the Inno Setup installer** (`Instalador/Gregal.iss`, built by `Instalador/Crear-Instalador.ps1`, which publishes, extracts `GREGAL_EMPTY.FDB` from `HEAD` — never the working copy — and passes `<Version>` from `Gregal.csproj`; requires Inno Setup 6). One `.exe` installs or updates depending on whether the `GregalReceiverService` service already exists (`ServiceName` is overridable with `/DServiceName=` — use that to test against a throwaway service instead of a real one). Fresh install: copies files and runs `Instalar-Gregal.ps1` for the sala questions. Update: install folder taken from the service's `ImagePath` (so salas installed with the scripts update in place), service stopped in `PrepareToInstall`, files replaced with `appsettings.json` and `GREGAL_EMPTY.FDB` marked `onlyifdoesntexist uninsneveruninstall`, new config dropped as `appsettings.json.nuevo`, service restarted; an unchecked post-install option re-runs `Instalar-Gregal.ps1`. Uninstall stops and deletes the service (and any `Gregal TCP *` firewall rule) but keeps config, logs and database. `AppId` must never change between versions.
 

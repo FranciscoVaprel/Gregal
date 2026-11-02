@@ -10,7 +10,9 @@
 
     Requisitos en el PC de destino:
       - Windows 10/11 (x64). .NET 10 no puede instalarse en Windows 7/8/8.1.
-      - .NET 10 Runtime (win-x64) instalado.
+      - .NET 10 Runtime (win-x64): ya viene incluido en la carpeta publicada
+        (publicación autocontenida). Solo hace falta instalarlo aparte con
+        una publicación antigua, que no lo llevaba.
       - Firebird Server corriendo en local (puerto 3050 por defecto).
 #>
 
@@ -92,13 +94,19 @@ if (Get-Service -Name "GregalReceiverService" -ErrorAction SilentlyContinue) {
 }
 
 $dotnetOk = $false
-try {
-    $runtimes = & dotnet --list-runtimes 2>$null
-    if ($runtimes -match "Microsoft\.NETCore\.App 10\.") { $dotnetOk = $true }
+$dotnetIncluido = Test-Path (Join-Path $InstallDir "coreclr.dll")   # publicación autocontenida
+if (-not $dotnetIncluido) {
+    try {
+        $runtimes = & dotnet --list-runtimes 2>$null
+        if ($runtimes -match "Microsoft\.NETCore\.App 10\.") { $dotnetOk = $true }
+    }
+    catch { }
 }
-catch { }
 
-if ($dotnetOk) {
+if ($dotnetIncluido) {
+    Write-Ok ".NET 10 Runtime incluido en la carpeta de Gregal."
+}
+elseif ($dotnetOk) {
     Write-Ok ".NET 10 Runtime encontrado."
 }
 else {

@@ -3,7 +3,8 @@
 
         .\Instalador\Crear-Instalador.ps1
 
-    Publica la app en Release, saca la plantilla vacía GREGAL_EMPTY.FDB del
+    Publica la app en Release (autocontenida: lleva el runtime de .NET 10),
+    saca la plantilla vacía GREGAL_EMPTY.FDB del
     commit actual (nunca de la copia de trabajo, que SQL Manager puede haber
     tocado) y compila Gregal.iss con la versión del propio Gregal.dll
     (<Version> de Gregal.csproj).
@@ -28,9 +29,12 @@ if (-not $Iscc) {
 }
 if (-not $Iscc -or -not (Test-Path $Iscc)) { throw "No se encuentra ISCC.exe de Inno Setup 6. Indícalo con -Iscc." }
 
-Write-Host "==> Publicando Gregal (Release, win-x64)" -ForegroundColor Cyan
+Write-Host "==> Publicando Gregal (Release, win-x64, autocontenido)" -ForegroundColor Cyan
 if (Test-Path $Publish) { Remove-Item $Publish -Recurse -Force }
-& dotnet publish (Join-Path $Repo "Gregal") -c Release -p:PublishProfile=FolderProfile -nologo -v q
+# Autocontenido: el runtime de .NET 10 va en la carpeta del programa, así que
+# el PC de la sala no necesita tenerlo instalado. Las opciones van aquí y no
+# en un perfil de publicación (FolderProfile.pubxml no está en git).
+& dotnet publish (Join-Path $Repo "Gregal") -c Release -r win-x64 --self-contained true -o $Publish -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish ha fallado." }
 
 Write-Host "==> Plantilla GREGAL_EMPTY.FDB del commit actual" -ForegroundColor Cyan

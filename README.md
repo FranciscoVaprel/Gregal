@@ -17,8 +17,8 @@ Entiende dos protocolos, que se activan por separado en `appsettings.json`:
 ## Requisitos
 
 - Windows 10/11 de 64 bits.
-- [Runtime de .NET 10](https://dotnet.microsoft.com/download/dotnet/10.0)
-  (basta el *Runtime*, no hace falta el SDK).
+- No hace falta instalar .NET: el instalador y los zip llevan el runtime de
+  .NET 10 dentro de la carpeta del programa (publicación autocontenida).
 - Servidor Firebird en marcha, con una base de datos que tenga la tabla
   `HISTORICO` (o una copia de la plantilla vacía `GREGAL_EMPTY.FDB`).
 - La máquina de bingo conectada a un puerto serie del PC (9600 baudios, 8N1).

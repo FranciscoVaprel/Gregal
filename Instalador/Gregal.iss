@@ -1,7 +1,7 @@
 ﻿; Instalador/actualizador de Gregal con Inno Setup 6.
 ;
 ; No se compila a mano: usa Crear-Instalador.ps1 (en esta misma carpeta), que
-; publica la app, saca la plantilla GREGAL_EMPTY.FDB del commit actual y pasa
+; publica la app (autocontenida: incluye el runtime de .NET 10), saca la plantilla GREGAL_EMPTY.FDB del commit actual y pasa
 ; aquí AppVersion, PublishDir y TemplateFdb.
 ;
 ; Un mismo .exe instala o actualiza:
@@ -105,32 +105,12 @@ begin
   Result := ServicioExistia;
 end;
 
-function DotNet10Instalado: Boolean;
-var
-  FindRec: TFindRec;
-begin
-  Result := FindFirst(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.NETCore.App\10.*'), FindRec);
-  if Result then
-    FindClose(FindRec);
-end;
-
+// No hace falta comprobar el runtime de .NET 10: la app se publica
+// autocontenida y lo lleva en su propia carpeta.
 function InitializeSetup: Boolean;
-var
-  Codigo: Integer;
 begin
   Result := True;
   ServicioExistia := RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\{#ServiceName}');
-
-  if not DotNet10Instalado then
-  begin
-    if MsgBox('No se detecta el runtime de .NET 10 (x64) en este PC, y Gregal lo necesita para funcionar.' + #13#10#13#10 +
-              '¿Abrir la página de descarga y cancelar la instalación? (elige "No" para instalar de todos modos)',
-              mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/10.0', '', '', SW_SHOWNORMAL, ewNoWait, Codigo);
-      Result := False;
-    end;
-  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
