@@ -6,13 +6,18 @@
     publicada con `dotnet publish`). Ejecutarlo con "Ejecutar con PowerShell"
     como Administrador, o desde una consola de PowerShell elevada:
 
-        .\Instalar-Gregal.ps1                 # pregunta si instalar como servicio
-        .\Instalar-Gregal.ps1 -SinServicio    # Gregal se arranca a mano (acceso directo)
+        .\Instalar-Gregal.ps1                 # pregunta cómo arrancar Gregal
+        .\Instalar-Gregal.ps1 -ConServicio    # servicio de Windows
+        .\Instalar-Gregal.ps1 -AlIniciarSesion  # consola, al iniciar sesión en Windows
+        .\Instalar-Gregal.ps1 -SinServicio    # consola, se arranca a mano (acceso directo)
 
     Con servicio (lo normal en una sala), Gregal arranca solo al encender el
-    PC, sin nadie conectado. Sin servicio, solo recibe partidas mientras
-    alguien lo tenga abierto. Gregal-Setup pasa -ConServicio o -SinServicio
-    según la casilla elegida en el instalador.
+    PC, sin nadie conectado. -AlIniciarSesion abre la versión de consola cada
+    vez que alguien inicia sesión en Windows (acceso directo en la carpeta
+    Inicio de todos los usuarios): necesita que el PC inicie sesión, a mano o
+    con inicio de sesión automático. Sin servicio, solo recibe partidas
+    mientras alguien lo tenga abierto. Gregal-Setup pasa la opción elegida en
+    el instalador.
 
     Requisitos en el PC de destino:
       - Windows 10/11 (x64). .NET 10 no puede instalarse en Windows 7/8/8.1.
@@ -24,7 +29,8 @@
 #>
 param(
     [switch]$ConServicio,
-    [switch]$SinServicio
+    [switch]$SinServicio,
+    [switch]$AlIniciarSesion
 )
 
 $ErrorActionPreference = "Stop"
@@ -203,14 +209,19 @@ else {
 }
 
 # ── Servicio de Windows o arranque a mano ───────────────────────────────
+$arrancarAlIniciarSesion = $false
 if ($ConServicio) { $instalarServicio = $true }
+elseif ($AlIniciarSesion) { $instalarServicio = $false; $arrancarAlIniciarSesion = $true }
 elseif ($SinServicio) { $instalarServicio = $false }
 else {
-    Write-Host ""
-    Write-Host "Como servicio de Windows, Gregal arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)."
-    Write-Host "Sin servicio, solo recibe partidas mientras alguien lo tenga abierto (acceso directo en el escritorio)."
-    $respuesta = Read-Host "¿Instalar Gregal como servicio de Windows? (S/n)"
-    $instalarServicio = $respuesta -notmatch "^[nN]"
+    Write-Step "Cómo arranca Gregal"
+    Write-Host "  1) Servicio de Windows: arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)"
+    Write-Host "  2) Ventana de consola al iniciar sesión en Windows (necesita que alguien inicie sesión, o inicio de sesión automático)"
+    Write-Host "  3) Ventana de consola a mano, con el acceso directo del escritorio"
+    Write-Host "  Sin servicio, Gregal solo recibe partidas mientras su ventana esté abierta."
+    $opcionArranque = Read-WithDefault "Elige una opción" "1"
+    $instalarServicio = $opcionArranque -notin @("2", "3")
+    $arrancarAlIniciarSesion = $opcionArranque -eq "2"
 }
 
 # ── Protocolo a usar en esta sala ────────────────────────────────────────
@@ -340,6 +351,27 @@ else {
 }
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+
+# Con la carpeta de Gregal como carpeta de trabajo: en consola, Gregal lee
+# appsettings.json de la carpeta desde la que se arranca.
+function New-AccesoDirecto([string]$Ruta) {
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut($Ruta)
+    $lnk.TargetPath = $ExePath
+    $lnk.WorkingDirectory = $InstallDir
+    $lnk.Description = "Gregal - Receptor de Bingo"
+    $lnk.Save()
+}
+
+# Acceso directo de la carpeta Inicio de todos los usuarios: se quita en
+# cualquier otro modo para que no arranquen dos Gregal (servicio y consola)
+# peleándose por el mismo puerto COM.
+$accesoInicio = Join-Path ([Environment]::GetFolderPath("CommonStartup")) "Gregal.lnk"
+if (-not $arrancarAlIniciarSesion -and (Test-Path $accesoInicio)) {
+    Remove-Item $accesoInicio -Force
+    Write-Ok "Quitado el arranque de Gregal al iniciar sesión ($accesoInicio)."
+}
+
 if ($instalarServicio) {
     # ── Registrar como servicio de Windows ──────────────────────────────
     Write-Step "Registrando el servicio de Windows '$ServiceName'"
@@ -363,16 +395,13 @@ else {
         Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
         & sc.exe delete $ServiceName | Out-Null
     }
-    # Con la carpeta de Gregal como carpeta de trabajo: en consola, Gregal lee
-    # appsettings.json de la carpeta desde la que se arranca.
     $accesoDirecto = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Gregal.lnk"
-    $shell = New-Object -ComObject WScript.Shell
-    $lnk = $shell.CreateShortcut($accesoDirecto)
-    $lnk.TargetPath = $ExePath
-    $lnk.WorkingDirectory = $InstallDir
-    $lnk.Description = "Gregal - Receptor de Bingo"
-    $lnk.Save()
+    New-AccesoDirecto $accesoDirecto
     Write-Ok "Acceso directo creado en el escritorio: $accesoDirecto"
+    if ($arrancarAlIniciarSesion) {
+        New-AccesoDirecto $accesoInicio
+        Write-Ok "Gregal arrancará al iniciar sesión en Windows: $accesoInicio"
+    }
 }
 
 # ── Regla de firewall para el puerto TCP (solo si se usa el protocolo JSON/CSV) ──
@@ -394,7 +423,11 @@ else {
 
 if (-not $instalarServicio) {
     Write-Step "Instalación terminada (sin servicio)"
-    Write-Host "Gregal solo recibe partidas mientras está abierto: arráncalo con el acceso directo 'Gregal' del escritorio"
+    if ($arrancarAlIniciarSesion) {
+        Write-Host "Gregal se abrirá cada vez que alguien inicie sesión en Windows. Si el PC arranca sin iniciar sesión,"
+        Write-Host "Gregal no se abre: configura el inicio de sesión automático o usa el servicio."
+    }
+    Write-Host "Gregal solo recibe partidas mientras está abierto: si se cierra, arráncalo con el acceso directo 'Gregal' del escritorio"
     Write-Host "y deja la ventana abierta (se cierra con Ctrl+C)."
     $arrancar = Read-Host "¿Arrancar Gregal ahora? (S/n)"
     if ($arrancar -notmatch "^[nN]") { Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir }

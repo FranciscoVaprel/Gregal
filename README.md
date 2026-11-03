@@ -43,8 +43,8 @@ como virus por error. En ese caso, usa los zip.
 en PowerShell como administrador, ejecuta `.\Instalar-Gregal.ps1`. Comprueba que
 Firebird responde, pregunta el puerto COM, la sala, la concesión, el fabricante
 y la base de datos, escribe `appsettings.json`, comprueba que Gregal puede usar
-esa base de datos y registra el servicio (o, con `-SinServicio`, crea un acceso
-directo en el escritorio). Si ya tienes un `appsettings.json` de esa sala,
+esa base de datos y registra el servicio (o, con `-AlIniciarSesion` o
+`-SinServicio`, deja Gregal en consola: ver más abajo). Si ya tienes un `appsettings.json` de esa sala,
 cópialo encima en lugar de ejecutar el script.
 
 **Comprobar la base de datos en cualquier momento:** desde la carpeta de
@@ -59,8 +59,19 @@ descomprimida en otra carpeta.
 
 ### Servicio de Windows o consola
 
-El instalador pregunta cuál de los dos (casilla «Instalar como servicio de
-Windows», marcada por defecto).
+El instalador pregunta cómo arranca Gregal:
+
+- **Servicio de Windows** (por defecto, lo normal en una sala).
+- **Ventana de consola al iniciar sesión en Windows** (`-AlIniciarSesion` en
+  `Instalar-Gregal.ps1`): pone el acceso directo `Gregal.lnk` en la carpeta
+  Inicio de todos los usuarios
+  (`C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp`). Solo se abre
+  cuando alguien inicia sesión: si el PC arranca y se queda en la pantalla de
+  inicio de sesión, Gregal no recibe partidas (configura el inicio de sesión
+  automático de Windows o usa el servicio). Para quitarlo, borra ese acceso
+  directo.
+- **Ventana de consola a mano** (`-SinServicio`): solo el acceso directo del
+  escritorio.
 
 Como servicio (`GregalReceiverService`) arranca solo al encender el PC aunque
 nadie inicie sesión, y Windows lo puede reiniciar si se cae:
