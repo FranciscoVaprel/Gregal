@@ -18,7 +18,8 @@ public class NetworkSettings {
     public List<string> AllowedIps { get; set; } = new();
     public int TcpKeepAliveTime { get; set; } = 60; 
     public int TcpKeepAliveInterval { get; set; } = 10;
-    public string ComPort { get; set; } = "COM1";
+    private string _comPort = "COM1";
+    public string ComPort { get => _comPort; set => _comPort = PuertoSerie.Normalizar(value); }
     public int BaudRate { get; set; } = 9600;    
     public int TcpReadTimeoutMinutes { get; set; } = 5;
     public int TcpMaxBufferChars { get; set; } = 102400;

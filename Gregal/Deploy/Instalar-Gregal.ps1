@@ -42,6 +42,34 @@ function Read-WithDefault($prompt, $default) {
     return $value
 }
 
+# Puerto COM: enseña los de este PC con el nombre del dispositivo, acepta "1"
+# como "COM1" (en una sala se respondió "1" y Gregal no abría el puerto) y,
+# si no existe en el PC, avisa y vuelve a preguntar.
+function Read-PuertoCom([string]$Prompt, [string]$Default) {
+    $puertos = @([System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object -Unique)
+    if ($puertos.Count -gt 0) {
+        $nombres = @{}
+        Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Name -match '\((COM\d+)\)') { $nombres[$Matches[1]] = $_.Name }
+        }
+        Write-Host "Puertos serie de este PC:"
+        foreach ($p in $puertos) { Write-Host "  $p  $($nombres[$p])" }
+        if ($puertos -notcontains $Default) { $Default = $puertos[0] }
+    }
+    else {
+        Write-Warn "No se detecta ningún puerto serie en este PC (¿adaptador USB sin conectar o sin driver?)."
+    }
+    while ($true) {
+        $puerto = (Read-WithDefault $Prompt $Default).Trim()
+        if ($puerto -match '^\d+$') { $puerto = "COM$puerto" }
+        elseif ($puerto -match '^com\s*(\d+)$') { $puerto = "COM$($Matches[1])" }
+        if ($puertos -contains $puerto) { return $puerto }
+        Write-Warn "$puerto no está en este PC."
+        $usar = Read-Host "¿Usarlo de todos modos (por ejemplo, si el adaptador aún no está conectado)? (s/N)"
+        if ($usar -match "^[sS]") { return $puerto }
+    }
+}
+
 # ── Edición de appsettings.json con ámbito de sección ───────────────────
 # No usamos ConvertFrom-Json/ConvertTo-Json porque eso no tolera los
 # comentarios "//" del fichero y lo reescribiría entero perdiendo el formato.
@@ -197,7 +225,7 @@ $usarJsonCsv = $opcionProtocolo -in @("2", "3")
 
 if ($usarTag) {
     Write-Step "Configuración del protocolo de eventos (tag)"
-    $TagComPort = Read-WithDefault "Puerto COM donde está conectado el hardware de la sala" "COM9"
+    $TagComPort = Read-PuertoCom "Puerto COM donde está conectado el hardware de la sala" "COM9"
     Write-Host "CodSala/CodConc identifican esta sala en Firebird (columnas COD_SALA/COD_CONC de HISTORICO)."
     Write-Host "Tienen que ser valores reales y distintos de 0, o Gregal rechazará guardar las partidas."
     $CodSala = Read-WithDefault "Código de sala (CodSala)" "1"
@@ -224,7 +252,7 @@ if ($usarJsonCsv) {
     $TcpPort = Read-WithDefault "Puerto TCP" "8080"
     $TcpAddress = Read-WithDefault "Dirección de escucha TCP (0.0.0.0 = todas las interfaces)" "0.0.0.0"
     $AllowedIpsRaw = Read-WithDefault "IPs autorizadas por TCP, separadas por coma (vacío = sin restricción)" "127.0.0.1"
-    $NetComPort = Read-WithDefault "Puerto COM de este protocolo (distinto del de arriba si usas los dos)" "COM8"
+    $NetComPort = Read-PuertoCom "Puerto COM de este protocolo (distinto del de arriba si usas los dos)" "COM8"
     $Handshake = Read-WithDefault "Control de flujo serie (None / RequestToSend)" "None"
 }
 if (-not $ServiceName) {

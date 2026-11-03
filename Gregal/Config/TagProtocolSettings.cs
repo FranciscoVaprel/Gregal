@@ -15,7 +15,8 @@ public class TagProtocolSettings : ReglasProtocoloTag {
     // receptor principal (ver NetworkSettings.Enabled para el otro protocolo).
     public bool Enabled { get; set; } = true;
 
-    public string ComPort { get; set; } = "COM9";
+    private string _comPort = "COM9";
+    public string ComPort { get => _comPort; set => _comPort = PuertoSerie.Normalizar(value); }
     public int BaudRate { get; set; } = 9600;
     public int SerialDataBits { get; set; } = 8;
     public Parity SerialParity { get; set; } = Parity.None;
