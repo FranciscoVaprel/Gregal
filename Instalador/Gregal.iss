@@ -5,13 +5,16 @@
 ; aquí AppVersion, PublishDir y TemplateFdb.
 ;
 ; Un mismo .exe instala o actualiza:
-;   - Sala nueva (no existe el servicio): copia los ficheros y lanza
-;     Instalar-Gregal.ps1 para configurar la sala (puerto COM, sala, fabricante,
-;     base de datos) y registrar el servicio.
-;   - Sala con Gregal (existe el servicio, instalado con este .exe o con los
-;     scripts): detiene el servicio, sustituye el programa SIN tocar
-;     appsettings.json ni la base de datos, y lo vuelve a arrancar. La
-;     configuración de la versión nueva queda como appsettings.json.nuevo.
+;   - Sala nueva: copia los ficheros y lanza Instalar-Gregal.ps1 para
+;     configurar la sala (puerto COM, sala, fabricante, base de datos, que
+;     comprueba con "Gregal.exe --comprobar-bd"). Con la casilla "servicio"
+;     (marcada por defecto) registra el servicio; sin ella deja un acceso
+;     directo en el escritorio para arrancar Gregal a mano.
+;   - Sala con Gregal (existe el servicio, o una instalación previa de este
+;     .exe aunque sea sin servicio): para el servicio si lo hay, sustituye el
+;     programa SIN tocar appsettings.json ni la base de datos, y vuelve a
+;     arrancar el servicio. La configuración de la versión nueva queda como
+;     appsettings.json.nuevo.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -47,8 +50,10 @@ OutputBaseFilename=Gregal-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-; El servicio lo para PrepareToInstall; no hace falta el Restart Manager.
-CloseApplications=no
+; El servicio lo para PrepareToInstall. El Restart Manager queda para un
+; Gregal abierto a mano (instalación sin servicio): ofrece cerrarlo.
+CloseApplications=yes
+RestartApplications=no
 SetupLogging=yes
 
 [Languages]
@@ -62,13 +67,24 @@ Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; Flags: onlyifdoesnte
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; DestName: "appsettings.json.nuevo"; Flags: ignoreversion
 Source: "{#TemplateFdb}"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 
+[Tasks]
+; Solo en una sala nueva: al actualizar se respeta lo que ya hay.
+Name: "servicio"; Description: "Instalar como servicio de Windows: arranca solo al encender el PC, sin nadie conectado (lo normal en una sala). Sin marcar, Gregal se arranca a mano con un acceso directo en el escritorio y solo recibe partidas mientras está abierto."; Check: not EsActualizacion
+
 [Run]
-; Sala nueva: configuración y registro del servicio (Instalar-Gregal.ps1 ya
-; arranca el servicio y enseña el log).
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1'; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Check: not EsActualizacion; Flags: waituntilterminated
-; Actualización: se vuelve a arrancar el servicio con la versión nueva.
-Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; StatusMsg: "Arrancando el servicio..."; Check: EsActualizacion; Flags: runhidden waituntilterminated
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1'; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; Description: "Volver a configurar la sala (puerto COM, sala, fabricante, base de datos)"; Check: EsActualizacion; Flags: postinstall unchecked waituntilterminated
+; Sala nueva: configuración (Instalar-Gregal.ps1 registra y arranca el
+; servicio y enseña el log, o crea el acceso directo si va sin servicio).
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1' -ConServicio; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Tasks: servicio; Check: not EsActualizacion; Flags: waituntilterminated
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1' -SinServicio; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Tasks: not servicio; Check: not EsActualizacion; Flags: waituntilterminated
+; Actualización: se vuelve a arrancar el servicio con la versión nueva, o se
+; ofrece arrancar Gregal si va sin servicio.
+Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; StatusMsg: "Arrancando el servicio..."; Check: EsActualizacion and TieneServicio; Flags: runhidden waituntilterminated
+Filename: "{app}\Gregal.exe"; WorkingDir: "{app}"; Description: "Arrancar Gregal"; Check: EsActualizacion and not TieneServicio; Flags: postinstall nowait runasoriginaluser
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1'; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; Description: "Volver a configurar la sala (puerto COM, sala, fabricante, base de datos, servicio)"; Check: EsActualizacion; Flags: postinstall unchecked waituntilterminated
+
+[UninstallDelete]
+; El acceso directo lo crea Instalar-Gregal.ps1 cuando va sin servicio.
+Type: files; Name: "{commondesktop}\Gregal.lnk"
 
 [UninstallRun]
 Filename: "{#PowerShell}"; Parameters: "-NoProfile -Command ""Stop-Service {#ServiceName} -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; sc.exe delete {#ServiceName}; Get-NetFirewallRule -DisplayName 'Gregal TCP *' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"""; RunOnceId: "QuitarServicio"; Flags: runhidden waituntilterminated
@@ -76,6 +92,8 @@ Filename: "{#PowerShell}"; Parameters: "-NoProfile -Command ""Stop-Service {#Ser
 [Code]
 var
   ServicioExistia: Boolean;
+  // Instalación previa hecha con este .exe (con o sin servicio).
+  InstalacionPrevia: Boolean;
 
 // Carpeta del Gregal.exe registrado como servicio (vacía si no hay servicio).
 function DirectorioDelServicio: String;
@@ -100,7 +118,15 @@ begin
     Result := ExpandConstant('{sd}\Gregal');
 end;
 
+// Sin servicio, una sala ya instalada con este .exe se reconoce por su
+// entrada de desinstalación: no se vuelve a preguntar la configuración.
 function EsActualizacion: Boolean;
+begin
+  Result := ServicioExistia or InstalacionPrevia;
+end;
+
+// Para los Check: de [Run], que solo admiten funciones.
+function TieneServicio: Boolean;
 begin
   Result := ServicioExistia;
 end;
@@ -111,6 +137,8 @@ function InitializeSetup: Boolean;
 begin
   Result := True;
   ServicioExistia := RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\{#ServiceName}');
+  InstalacionPrevia := RegKeyExists(HKLM,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F1C2B7E-3A4D-4E8B-9C21-5D7F0A9B3E42}_is1');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -129,6 +157,10 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if (CurPageID = wpReady) and ServicioExistia then
+  if (CurPageID = wpReady) and EsActualizacion then
+  begin
     Wizardform.ReadyMemo.Lines.Add(#13#10 + 'Gregal ya está instalado: se actualizará el programa conservando la configuración de la sala (appsettings.json) y su base de datos.');
+    if not ServicioExistia then
+      Wizardform.ReadyMemo.Lines.Add('Está instalado sin servicio de Windows: si Gregal está abierto, se cerrará para actualizarlo.');
+  end;
 end;

@@ -40,10 +40,17 @@ El `.exe` no está firmado: Windows puede mostrar el aviso de SmartScreen
 como virus por error. En ese caso, usa los zip.
 
 **Instalación con el zip completo:** descomprímelo en la carpeta definitiva y,
-en PowerShell como administrador, ejecuta `.\Instalar-Gregal.ps1`. Pregunta el
-puerto COM, la sala, la concesión, el fabricante y la base de datos, escribe
-`appsettings.json` y registra el servicio. Si ya tienes un `appsettings.json`
-de esa sala, cópialo encima en lugar de ejecutar el script.
+en PowerShell como administrador, ejecuta `.\Instalar-Gregal.ps1`. Comprueba que
+Firebird responde, pregunta el puerto COM, la sala, la concesión, el fabricante
+y la base de datos, escribe `appsettings.json`, comprueba que Gregal puede usar
+esa base de datos y registra el servicio (o, con `-SinServicio`, crea un acceso
+directo en el escritorio). Si ya tienes un `appsettings.json` de esa sala,
+cópialo encima en lugar de ejecutar el script.
+
+**Comprobar la base de datos en cualquier momento:** desde la carpeta de
+Gregal, `.\Gregal.exe --comprobar-bd`. Con la configuración de
+`appsettings.json`, dice si conecta con Firebird y si la tabla tiene todas las
+columnas que Gregal escribe.
 
 **Actualización a mano:** para Gregal, copia encima el contenido del zip de
 actualización y vuelve a arrancarlo. `Actualizar-Gregal.ps1` (incluido en los
@@ -52,9 +59,11 @@ descomprimida en otra carpeta.
 
 ### Servicio de Windows o consola
 
-Como servicio (`GregalReceiverService`, lo crea el instalador) arranca solo al
-encender el PC aunque nadie inicie sesión, y Windows lo puede reiniciar si se
-cae:
+El instalador pregunta cuál de los dos (casilla «Instalar como servicio de
+Windows», marcada por defecto).
+
+Como servicio (`GregalReceiverService`) arranca solo al encender el PC aunque
+nadie inicie sesión, y Windows lo puede reiniciar si se cae:
 
 ```powershell
 sc.exe create GregalReceiverService binPath= "C:\Gregal\Gregal.exe" start= auto DisplayName= "Gregal - Receptor de Bingo"
@@ -63,8 +72,8 @@ Start-Service GregalReceiverService
 Get-Service GregalReceiverService
 ```
 
-También puede ejecutarse en una consola (`Gregal.exe`), que muestra al
-arrancar un resumen del PC, los puertos COM detectados y la configuración. En
+Sin servicio, se arranca con el acceso directo «Gregal» del escritorio, o en
+una consola (`Gregal.exe`, desde su carpeta), que muestra al arrancar un resumen del PC, los puertos COM detectados y la configuración. En
 ese caso: no ejecutes a la vez el servicio (el puerto COM solo lo puede abrir
 un programa), desactiva el «Modo de edición rápida» de la consola (un clic en
 la ventana congela Gregal hasta pulsar Esc) y recuerda que se para al cerrar

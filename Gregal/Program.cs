@@ -26,6 +26,12 @@ builder.Services.Configure<NetworkSettings>(builder.Configuration.GetSection("Ne
 builder.Services.Configure<DatabaseSettings>(builder.Configuration.GetSection("DatabaseSettings"));
 builder.Services.Configure<TagProtocolSettings>(builder.Configuration.GetSection("TagProtocolSettings"));
 
+// "Gregal.exe --comprobar-bd": solo comprueba la base de datos y sale (lo usa
+// Instalar-Gregal.ps1). No arranca receptores ni escribe log.
+if (args.Contains("--comprobar-bd", StringComparer.OrdinalIgnoreCase)) {
+    Environment.Exit(ComprobacionBd.Ejecutar(builder.Configuration));
+}
+
 var generalSettings = builder.Configuration.GetSection("GeneralSettings").Get<GeneralSettings>()
                       ?? new GeneralSettings();
 

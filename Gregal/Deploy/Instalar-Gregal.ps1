@@ -6,15 +6,26 @@
     publicada con `dotnet publish`). Ejecutarlo con "Ejecutar con PowerShell"
     como Administrador, o desde una consola de PowerShell elevada:
 
-        .\Instalar-Gregal.ps1
+        .\Instalar-Gregal.ps1                 # pregunta si instalar como servicio
+        .\Instalar-Gregal.ps1 -SinServicio    # Gregal se arranca a mano (acceso directo)
+
+    Con servicio (lo normal en una sala), Gregal arranca solo al encender el
+    PC, sin nadie conectado. Sin servicio, solo recibe partidas mientras
+    alguien lo tenga abierto. Gregal-Setup pasa -ConServicio o -SinServicio
+    según la casilla elegida en el instalador.
 
     Requisitos en el PC de destino:
       - Windows 10/11 (x64). .NET 10 no puede instalarse en Windows 7/8/8.1.
       - .NET 10 Runtime (win-x64): ya viene incluido en la carpeta publicada
         (publicación autocontenida). Solo hace falta instalarlo aparte con
         una publicación antigua, que no lo llevaba.
-      - Firebird Server corriendo en local (puerto 3050 por defecto).
+      - Firebird Server 2.5 corriendo en local (puerto 3050 por defecto). Se
+        comprueba al principio y, al final, con "Gregal.exe --comprobar-bd".
 #>
+param(
+    [switch]$ConServicio,
+    [switch]$SinServicio
+)
 
 $ErrorActionPreference = "Stop"
 $InstallDir = $PSScriptRoot
@@ -116,6 +127,64 @@ else {
     if ($continuar -notmatch "^[sS]") { exit 1 }
 }
 
+# Firebird: servidor y puerto de la cadena de conexión de appsettings.json.
+# Aquí solo se mira que responda; al final, con la configuración ya escrita,
+# "Gregal.exe --comprobar-bd" comprueba la base de datos y la tabla.
+function Test-Puerto([string]$Servidor, [int]$Puerto) {
+    $cliente = New-Object System.Net.Sockets.TcpClient
+    try { return $cliente.ConnectAsync($Servidor, $Puerto).Wait(3000) }
+    catch { return $false }
+    finally { $cliente.Dispose() }
+}
+
+$cadenaBd = [System.IO.File]::ReadAllText($AppSettingsPath)
+$fbServidor = "localhost"; $fbPuerto = 3050
+if ($cadenaBd -match 'DataSource=([^;"]+)') { $fbServidor = $Matches[1] }
+if ($cadenaBd -match 'Port=(\d+)') { $fbPuerto = [int]$Matches[1] }
+
+if (Test-Puerto $fbServidor $fbPuerto) {
+    Write-Ok "Firebird responde en ${fbServidor}:$fbPuerto."
+}
+else {
+    $fbServicios = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*Firebird*" -or $_.DisplayName -like "*Firebird*" })
+    $parados = @($fbServicios | Where-Object Status -ne "Running")
+    if ($parados.Count -gt 0) {
+        Write-Warn "Firebird está instalado pero parado: $(($parados | ForEach-Object Name) -join ', ')."
+        $arrancar = Read-Host "¿Arrancarlo ahora? (S/n)"
+        if ($arrancar -notmatch "^[nN]") {
+            $parados | ForEach-Object { Start-Service $_.Name -ErrorAction SilentlyContinue }
+            Start-Sleep -Seconds 2
+        }
+    }
+    if (Test-Puerto $fbServidor $fbPuerto) {
+        Write-Ok "Firebird responde en ${fbServidor}:$fbPuerto."
+    }
+    else {
+        if ($fbServicios.Count -eq 0) {
+            Write-Warn "No se encuentra ningún servidor Firebird en este PC."
+            Write-Warn "Instala Firebird 2.5 de 64 bits (https://firebirdsql.org, Downloads > Firebird 2.5) como servicio."
+            Write-Warn "Las bases de datos de Gregal son de Firebird 2.5: las versiones 3, 4 y 5 no las abren sin convertirlas."
+        }
+        else {
+            Write-Warn "Firebird no responde en ${fbServidor}:$fbPuerto (servicios: $(($fbServicios | ForEach-Object { "$($_.Name)=$($_.Status)" }) -join ', '))."
+        }
+        Write-Warn "Sin Firebird, Gregal no podrá guardar las partidas."
+        $continuar = Read-Host "¿Continuar de todos modos con la instalación? (s/N)"
+        if ($continuar -notmatch "^[sS]") { exit 1 }
+    }
+}
+
+# ── Servicio de Windows o arranque a mano ───────────────────────────────
+if ($ConServicio) { $instalarServicio = $true }
+elseif ($SinServicio) { $instalarServicio = $false }
+else {
+    Write-Host ""
+    Write-Host "Como servicio de Windows, Gregal arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)."
+    Write-Host "Sin servicio, solo recibe partidas mientras alguien lo tenga abierto (acceso directo en el escritorio)."
+    $respuesta = Read-Host "¿Instalar Gregal como servicio de Windows? (S/n)"
+    $instalarServicio = $respuesta -notmatch "^[nN]"
+}
+
 # ── Protocolo a usar en esta sala ────────────────────────────────────────
 Write-Step "Protocolo de esta sala"
 Write-Host "  1) Protocolo de eventos 'tag' por RS232 (*CODIGO<valor>#) - RECOMENDADO, es el que se ha probado"
@@ -158,7 +227,10 @@ if ($usarJsonCsv) {
     $NetComPort = Read-WithDefault "Puerto COM de este protocolo (distinto del de arriba si usas los dos)" "COM8"
     $Handshake = Read-WithDefault "Control de flujo serie (None / RequestToSend)" "None"
 }
-if (-not $ServiceName) { $ServiceName = Read-WithDefault "Nombre del servicio de Windows" "GregalReceiverService" }
+if (-not $ServiceName) {
+    if ($instalarServicio) { $ServiceName = Read-WithDefault "Nombre del servicio de Windows" "GregalReceiverService" }
+    else { $ServiceName = "GregalReceiverService" }
+}
 
 Write-Step "Base de datos Firebird"
 $DefaultDbPath = Join-Path $InstallDir "Data\GREGAL.FDB"
@@ -218,19 +290,62 @@ $content = [System.Text.RegularExpressions.Regex]::Replace(
 [System.IO.File]::WriteAllText($AppSettingsPath, $content, (New-Object System.Text.UTF8Encoding($false)))
 Write-Ok "appsettings.json actualizado."
 
-# ── Registrar como servicio de Windows ──────────────────────────────────
-Write-Step "Registrando el servicio de Windows '$ServiceName'"
-
-$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existing) {
-    Write-Warn "Ya existe un servicio '$ServiceName'. Se detiene y se vuelve a crear con la ruta actual."
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    & sc.exe delete $ServiceName | Out-Null
-    Start-Sleep -Seconds 1
+# ── Comprobar la base de datos con la configuración ya escrita ──────────
+# Gregal.exe se conecta como lo hará al guardar una partida: servidor,
+# fichero .FDB, usuario/contraseña, tabla y columnas.
+Write-Step "Comprobando la base de datos"
+Push-Location $InstallDir
+try { $salidaBd = & $ExePath --comprobar-bd; $codigoBd = $LASTEXITCODE }
+finally { Pop-Location }
+$salidaBd | ForEach-Object { Write-Host "  $_" }
+if ($codigoBd -eq 0) {
+    Write-Ok "Base de datos lista."
+}
+else {
+    Write-Warn "Gregal no podrá guardar partidas con esta configuración hasta que se corrija lo anterior"
+    Write-Warn "(Firebird, ruta del .FDB, contraseña en DatabaseSettings:ConnectionString o columnas de la tabla)."
+    $continuar = Read-Host "¿Continuar de todos modos? (s/N)"
+    if ($continuar -notmatch "^[sS]") {
+        Write-Warn "Instalación detenida. appsettings.json ya está escrito: corrígelo y vuelve a ejecutar este script."
+        exit 1
+    }
 }
 
-& sc.exe create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "Gregal - Receptor de Bingo" | Out-Null
-Write-Ok "Servicio '$ServiceName' creado."
+$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($instalarServicio) {
+    # ── Registrar como servicio de Windows ──────────────────────────────
+    Write-Step "Registrando el servicio de Windows '$ServiceName'"
+
+    if ($existing) {
+        Write-Warn "Ya existe un servicio '$ServiceName'. Se detiene y se vuelve a crear con la ruta actual."
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+        & sc.exe delete $ServiceName | Out-Null
+        Start-Sleep -Seconds 1
+    }
+
+    & sc.exe create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "Gregal - Receptor de Bingo" | Out-Null
+    Write-Ok "Servicio '$ServiceName' creado."
+}
+else {
+    # ── Sin servicio: acceso directo para arrancarlo a mano ─────────────
+    Write-Step "Gregal sin servicio de Windows"
+    if ($existing) {
+        # Si se quedara, los dos Gregal se pelearían por el mismo puerto COM.
+        Write-Warn "Había un servicio '$ServiceName': se detiene y se elimina."
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+        & sc.exe delete $ServiceName | Out-Null
+    }
+    # Con la carpeta de Gregal como carpeta de trabajo: en consola, Gregal lee
+    # appsettings.json de la carpeta desde la que se arranca.
+    $accesoDirecto = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Gregal.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut($accesoDirecto)
+    $lnk.TargetPath = $ExePath
+    $lnk.WorkingDirectory = $InstallDir
+    $lnk.Description = "Gregal - Receptor de Bingo"
+    $lnk.Save()
+    Write-Ok "Acceso directo creado en el escritorio: $accesoDirecto"
+}
 
 # ── Regla de firewall para el puerto TCP (solo si se usa el protocolo JSON/CSV) ──
 if ($usarJsonCsv) {
@@ -247,6 +362,15 @@ if ($usarJsonCsv) {
 }
 else {
     Write-Ok "Solo protocolo tag por serie: no hace falta abrir ningún puerto en el firewall."
+}
+
+if (-not $instalarServicio) {
+    Write-Step "Instalación terminada (sin servicio)"
+    Write-Host "Gregal solo recibe partidas mientras está abierto: arráncalo con el acceso directo 'Gregal' del escritorio"
+    Write-Host "y deja la ventana abierta (se cierra con Ctrl+C)."
+    $arrancar = Read-Host "¿Arrancar Gregal ahora? (S/n)"
+    if ($arrancar -notmatch "^[nN]") { Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir }
+    exit 0
 }
 
 # ── Arrancar el servicio ──────────────────────────────────────────────────
