@@ -348,15 +348,13 @@ $dbActual = [regex]::Match($actual, '(?<="ConnectionString"\s*:\s*"[^"]*)Databas
 if ($dbActual -and (Test-Path $dbActual)) { $DefaultDbPath = $dbActual }
 $DbPath = Read-WithDefault "Ruta completa del fichero .FDB de esta sala" $DefaultDbPath
 
-# La contraseña de SYSDBA no va en el appsettings.json publicado (el
-# repositorio es público: lleva masterkey, la de Firebird recién instalado).
-# Se pide sin mostrarla; Intro deja la que ya tenga el fichero.
-# Solo dentro de "ConnectionString": los comentarios del fichero también
-# pueden hablar de la contraseña.
+# Contraseña de SYSDBA: el appsettings.json publicado ya lleva la de las
+# salas, así que lo normal es Intro (deja la que tenga el fichero). Se pide
+# sin mostrarla. Solo dentro de "ConnectionString": los comentarios del
+# fichero también pueden hablar de la contraseña.
 $PatronPassword = '(?<="ConnectionString"\s*:\s*"[^"]*)Password=[^;"]*'
 $passActual = [regex]::Match([System.IO.File]::ReadAllText($AppSettingsPath), $PatronPassword).Value -replace '^Password=', ''
 $pistaPass = "Intro = dejar la actual"
-if ($passActual -eq "masterkey") { $pistaPass = "Intro = masterkey, la de Firebird recién instalado" }
 while ($true) {
     $seguro = Read-Host "Contraseña de SYSDBA en el Firebird de este PC ($pistaPass)" -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro)
@@ -429,10 +427,71 @@ Write-Ok "appsettings.json actualizado."
 # Gregal.exe se conecta como lo hará al guardar una partida: servidor,
 # fichero .FDB, usuario/contraseña, tabla y columnas.
 Write-Step "Comprobando la base de datos"
-Push-Location $InstallDir
-try { $salidaBd = & $ExePath --comprobar-bd; $codigoBd = $LASTEXITCODE }
-finally { Pop-Location }
-$salidaBd | ForEach-Object { Write-Host "  $_" }
+# Con -Password, prueba esa contraseña sin tocar appsettings.json (variable
+# de entorno, que Gregal lee por encima del fichero).
+function Test-BaseDeDatos([string]$Password) {
+    if ($Password) {
+        $cadena = [regex]::Match($content, '"ConnectionString"\s*:\s*"([^"]*)"').Groups[1].Value.Replace('\\', '\')
+        $env:DatabaseSettings__ConnectionString = [regex]::Replace($cadena, 'Password=[^;]*', { param($m) "Password=$Password" })
+    }
+    Push-Location $InstallDir
+    try { $salida = & $ExePath --comprobar-bd; $codigo = $LASTEXITCODE }
+    finally { Pop-Location; Remove-Item Env:DatabaseSettings__ConnectionString -ErrorAction SilentlyContinue }
+    return @{ Salida = @($salida); Codigo = $codigo }
+}
+
+# gsec.exe de la carpeta bin del Firebird de este PC (la del servicio).
+function Get-Gsec {
+    $carpetas = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "Firebird*" -and $_.PathName -match '(fbserver|fb_inet_server|firebird)\.exe' } |
+        ForEach-Object { Split-Path ($_.PathName -replace '^"?([^"]+?\.exe)"?.*$', '$1') -Parent })
+    $carpetas += "C:\Firebird\bin", "$env:ProgramFiles\Firebird\Firebird_2_5\bin", "${env:ProgramFiles(x86)}\Firebird\Firebird_2_5\bin"
+    foreach ($c in $carpetas) { if ($c -and (Test-Path (Join-Path $c "gsec.exe"))) { return Join-Path $c "gsec.exe" } }
+    return $null
+}
+
+$prueba = Test-BaseDeDatos
+$prueba.Salida | ForEach-Object { Write-Host "  $_" }
+$codigoBd = $prueba.Codigo
+
+# Firebird recién instalado: sigue con masterkey y no con la contraseña de
+# las salas. Si es así, se ofrece cambiarla en Firebird (gsec), para no
+# tener que escribir comandos. Solo con el Firebird de este mismo PC.
+$fbLocal = $fbServidor -in @("localhost", "127.0.0.1", $env:COMPUTERNAME)
+if ($codigoBd -ne 0 -and $fbLocal -and $DbPass -ne "masterkey" -and
+    ($prueba.Salida -join "`n") -match "user name and password are not defined") {
+    $usuarioBd = [regex]::Match($content, '(?<="ConnectionString"\s*:\s*"[^"]*)User=([^;"]*)').Groups[1].Value
+    if (-not $usuarioBd) { $usuarioBd = "SYSDBA" }
+    if ((Test-BaseDeDatos "masterkey").Codigo -eq 0) {
+        # Sin preguntar (decidido con el usuario 2026-11-04): se pone la de
+        # las salas.
+        Write-Host ""
+        Write-Host "El Firebird de este PC tiene todavía la contraseña de fábrica (masterkey): se cambia por la de las salas."
+        if ($true) {
+            $gsec = Get-Gsec
+            if (-not $gsec) {
+                Write-Warn "No se encuentra gsec.exe en la carpeta bin de Firebird: cámbiala a mano."
+            }
+            else {
+                $eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                $salidaGsec = & $gsec -user $usuarioBd -password masterkey -modify $usuarioBd -pw $DbPass 2>&1
+                $codigoGsec = $LASTEXITCODE
+                $ErrorActionPreference = $eap
+                if ($codigoGsec -eq 0) {
+                    Write-Ok "Contraseña de $usuarioBd cambiada en Firebird."
+                    if ($DbPass.Length -gt 8) { Write-Warn "Firebird 2.5 solo usa los 8 primeros caracteres de la contraseña." }
+                    $prueba = Test-BaseDeDatos
+                    $prueba.Salida | ForEach-Object { Write-Host "  $_" }
+                    $codigoBd = $prueba.Codigo
+                }
+                else {
+                    Write-Warn "gsec no pudo cambiarla: $($salidaGsec -join ' ')"
+                }
+            }
+        }
+    }
+}
+
 if ($codigoBd -eq 0) {
     Write-Ok "Base de datos lista."
 }

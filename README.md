@@ -153,9 +153,10 @@ Está junto a `Gregal.exe`. Los cambios se aplican al reiniciar Gregal.
 | `NetworkSettings:Enabled` | Activa el protocolo JSON/CSV antiguo (por defecto `false`). |
 
 La cadena de conexión incluye la contraseña de Firebird en texto plano. El
-`appsettings.json` del repositorio (que es público) lleva `masterkey`, la de
-Firebird recién instalado: el instalador pregunta la de cada sala y la escribe
-en el fichero de esa sala.
+`appsettings.json` que se instala ya lleva la de las salas (en «Configurar
+Gregal», Intro), y si el Firebird de la sala sigue con la de fábrica
+(`masterkey`), «Configurar Gregal» la cambia él solo por esa. Si una sala usa
+otra, se escribe al configurar y queda en el fichero de esa sala.
 
 ## Protocolo de eventos
 

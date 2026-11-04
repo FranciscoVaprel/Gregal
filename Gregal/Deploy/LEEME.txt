@@ -28,7 +28,8 @@ INSTALAR (una vez por PC)
      - Fabricante: 1 = MCB (lo normal), 2 = Metronia.
      - Código de sala y de concesión (en MCB, la concesión es 999).
      - Ruta de la base de datos, p. ej. C:\DatosCV\aamslog.FDB
-     - Contraseña de SYSDBA (no se ve al escribirla).
+     - Contraseña de SYSDBA: Intro (ya viene la de las salas). Si el
+       Firebird del PC tiene la de fábrica, Gregal la cambia él solo.
 5. Al final comprueba la base de datos. Tiene que decir "Base de datos lista".
 
 
