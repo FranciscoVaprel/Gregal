@@ -236,11 +236,7 @@ $usarJsonCsv = $opcionProtocolo -in @("2", "3")
 
 if ($usarTag) {
     Write-Step "Configuración del protocolo de eventos (tag)"
-    $TagComPort = Read-PuertoCom "Puerto COM donde está conectado el hardware de la sala" "COM9"
-    Write-Host "CodSala/CodConc identifican esta sala en Firebird (columnas COD_SALA/COD_CONC de HISTORICO)."
-    Write-Host "Tienen que ser valores reales y distintos de 0, o Gregal rechazará guardar las partidas."
-    $CodSala = Read-WithDefault "Código de sala (CodSala)" "1"
-    $CodConc = Read-WithDefault "Código de concesión (CodConc)" "1"
+    $TagComPort = Read-PuertoCom "Puerto COM donde está conectado el hardware de la sala" "COM1"
 
     # Hay (al menos) dos fabricantes de hardware con protocolos parecidos
     # pero no idénticos (confirmado 2026-10-14): en Metronia los códigos A/M/p
@@ -255,6 +251,15 @@ if ($usarTag) {
     $opcionFabricante = Read-WithDefault "Fabricante del hardware de esta sala" "1"
     $Fabricante = "Metronia"
     if ($opcionFabricante -eq "2") { $Fabricante = "MCB" }
+
+    # Después del fabricante: en las salas MCB la concesión es 999.
+    $CodConcPorDefecto = "1"
+    if ($Fabricante -eq "MCB") { $CodConcPorDefecto = "999" }
+    Write-Host ""
+    Write-Host "CodSala/CodConc identifican esta sala en Firebird (columnas COD_SALA/COD_CONC de HISTORICO)."
+    Write-Host "Tienen que ser valores reales y distintos de 0, o Gregal rechazará guardar las partidas."
+    $CodSala = Read-WithDefault "Código de sala (CodSala)" "1"
+    $CodConc = Read-WithDefault "Código de concesión (CodConc)" $CodConcPorDefecto
 }
 
 if ($usarJsonCsv) {
@@ -274,6 +279,26 @@ if (-not $ServiceName) {
 Write-Step "Base de datos Firebird"
 $DefaultDbPath = Join-Path $InstallDir "Data\GREGAL.FDB"
 $DbPath = Read-WithDefault "Ruta completa del fichero .FDB de esta sala" $DefaultDbPath
+
+# La contraseña de SYSDBA no va en el appsettings.json publicado (el
+# repositorio es público: lleva masterkey, la de Firebird recién instalado).
+# Se pide sin mostrarla; Intro deja la que ya tenga el fichero.
+# Solo dentro de "ConnectionString": los comentarios del fichero también
+# pueden hablar de la contraseña.
+$PatronPassword = '(?<="ConnectionString"\s*:\s*"[^"]*)Password=[^;"]*'
+$passActual = [regex]::Match([System.IO.File]::ReadAllText($AppSettingsPath), $PatronPassword).Value -replace '^Password=', ''
+$pistaPass = "Intro = dejar la actual"
+if ($passActual -eq "masterkey") { $pistaPass = "Intro = masterkey, la de Firebird recién instalado" }
+while ($true) {
+    $seguro = Read-Host "Contraseña de SYSDBA en el Firebird de este PC ($pistaPass)" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro)
+    try { $DbPass = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    if ([string]::IsNullOrEmpty($DbPass)) { $DbPass = $passActual; break }
+    # Romperían la cadena de conexión o el JSON.
+    if ($DbPass -notmatch '[;"]') { break }
+    Write-Warn "La contraseña no puede llevar ';' ni comillas. Cámbiala en Firebird (gsec) o escríbela de nuevo."
+}
 
 $DbDir = Split-Path $DbPath -Parent
 if (-not (Test-Path $DbDir)) { New-Item -ItemType Directory -Path $DbDir -Force | Out-Null }
@@ -320,11 +345,14 @@ if ($usarJsonCsv) {
     $content = Set-JsonStringInSection $content "NetworkSettings" "SerialHandshake" $Handshake
 }
 
-# Sustituye solo el segmento Database=...; dentro de la cadena de conexión de Firebird,
-# manteniendo usuario/contraseña/servidor/puerto tal como estén.
+# Sustituye solo los segmentos Database=...; y Password=... dentro de la
+# cadena de conexión de Firebird, manteniendo usuario/servidor/puerto tal como estén.
 $dbPathEscaped = $DbPath.Replace('\', '\\')
 $content = [System.Text.RegularExpressions.Regex]::Replace(
     $content, "Database=[^;""]*;", { param($m) "Database=$dbPathEscaped;" })
+$dbPassEscaped = $DbPass.Replace('\', '\\')
+$content = [System.Text.RegularExpressions.Regex]::Replace(
+    $content, $PatronPassword, { param($m) "Password=$dbPassEscaped" })
 
 [System.IO.File]::WriteAllText($AppSettingsPath, $content, (New-Object System.Text.UTF8Encoding($false)))
 Write-Ok "appsettings.json actualizado."
@@ -342,7 +370,7 @@ if ($codigoBd -eq 0) {
 }
 else {
     Write-Warn "Gregal no podrá guardar partidas con esta configuración hasta que se corrija lo anterior"
-    Write-Warn "(Firebird, ruta del .FDB, contraseña en DatabaseSettings:ConnectionString o columnas de la tabla)."
+    Write-Warn "(Firebird, ruta del .FDB, contraseña de SYSDBA o columnas de la tabla)."
     $continuar = Read-Host "¿Continuar de todos modos? (s/N)"
     if ($continuar -notmatch "^[sS]") {
         Write-Warn "Instalación detenida. appsettings.json ya está escrito: corrígelo y vuelve a ejecutar este script."
