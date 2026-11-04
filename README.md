@@ -58,7 +58,9 @@ como virus por error. En ese caso, usa los zip.
 **Configurar Gregal** (a partir de la 1.0.11; `Instalar-Gregal.ps1`) sirve
 para la primera configuración y para cualquier cambio posterior: cada pregunta
 propone lo que ya hay en `appsettings.json` (Intro lo deja igual), y pide
-permisos de administrador él solo.
+permisos de administrador él solo. La excepción es cómo arranca Gregal: propone
+siempre la ventana al iniciar Windows (opción 2) y señala en la lista cómo está
+ahora.
 
 **Instalación con el zip completo:** descomprímelo en la carpeta definitiva y
 haz doble clic en `Configurar.cmd`. Comprueba que

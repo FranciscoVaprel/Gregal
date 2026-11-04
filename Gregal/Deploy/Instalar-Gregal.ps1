@@ -248,19 +248,27 @@ if ($ConServicio) { $instalarServicio = $true }
 elseif ($AlIniciarSesion) { $instalarServicio = $false; $arrancarAlIniciarSesion = $true }
 elseif ($SinServicio) { $instalarServicio = $false }
 else {
-    # Por defecto, el modo que ya tiene este PC; en uno sin nada, la ventana
-    # al iniciar Windows (lo normal en nuestras salas).
-    $arranqueActual = "2"
+    # Siempre se propone la 2, la ventana al iniciar Windows (lo normal en
+    # nuestras salas: decidido con el usuario 2026-11-04, también en un PC
+    # que esté como servicio). El modo actual solo se señala en la lista.
+    $arranqueActual = $null
     if (Get-Service -Name $ServicioActual -ErrorAction SilentlyContinue) { $arranqueActual = "1" }
     elseif ((Test-Path $accesoInicio) -or (Test-Path $accesoInicioUsuario)) { $arranqueActual = "2" }
     elseif (Test-Path $accesoEscritorio) { $arranqueActual = "3" }
+    $opciones = [ordered]@{
+        "1" = "Servicio de Windows: arranca al encender el PC aunque nadie entre al escritorio, sin ventana"
+        "2" = "Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio; lo normal en nuestras salas)"
+        "3" = "Ventana de consola a mano, con el acceso directo del escritorio"
+    }
     Write-Step "Cómo arranca Gregal"
-    Write-Host "  1) Servicio de Windows: arranca al encender el PC aunque nadie entre al escritorio, sin ventana"
-    Write-Host "  2) Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio; lo normal en nuestras salas)"
-    Write-Host "  3) Ventana de consola a mano, con el acceso directo del escritorio"
+    foreach ($n in $opciones.Keys) {
+        $marca = ""
+        if ($n -eq $arranqueActual) { $marca = "   <- así está ahora" }
+        Write-Host "  $n) $($opciones[$n])$marca"
+    }
     Write-Host "  Sin servicio, Gregal solo recibe partidas mientras su ventana esté abierta."
-    $opcionArranque = Read-WithDefault "Elige una opción" $arranqueActual
-    $instalarServicio = $opcionArranque -notin @("2", "3")
+    do { $opcionArranque = (Read-WithDefault "Elige una opción" "2").Trim() } while ($opcionArranque -notin @("1", "2", "3"))
+    $instalarServicio = $opcionArranque -eq "1"
     $arrancarAlIniciarSesion = $opcionArranque -eq "2"
 }
 
