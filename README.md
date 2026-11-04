@@ -35,14 +35,24 @@ trae tres ficheros:
 | `Gregal-<versión>-win-x64.zip` | Instalación completa sin instalador (por si el antivirus bloquea el `.exe`). |
 | `Gregal-<versión>-actualizacion-sin-config.zip` | Actualización a mano: no lleva `appsettings.json` ni ninguna `.FDB`, así que se puede copiar entero encima de la instalación. |
 
+**Actualizar con un clic:** a partir de la 1.0.10, el instalador deja en el
+escritorio el acceso directo **«Actualizar Gregal»**
+(`Buscar-Actualizacion.ps1`). Mira en GitHub si hay una versión más nueva que
+la instalada, enseña sus cambios y, si se acepta, descarga `Gregal-Setup` y lo
+ejecuta en silencio: conserva `appsettings.json` y la base de datos, y vuelve a
+arrancar el servicio (o Gregal en consola). Pide permisos de administrador solo
+si hay algo que instalar. Gregal se para unos segundos: mejor no hacerlo con
+una partida en marcha. Una sala con una versión anterior lo tendrá después de
+actualizarla una vez a mano.
+
 El `.exe` no está firmado: Windows puede mostrar el aviso de SmartScreen
 («Más información» → «Ejecutar de todas formas») y algún antivirus lo marca
 como virus por error. En ese caso, usa los zip.
 
 **Instalación con el zip completo:** descomprímelo en la carpeta definitiva y,
 en PowerShell como administrador, ejecuta `.\Instalar-Gregal.ps1`. Comprueba que
-Firebird responde, pregunta el puerto COM, la sala, la concesión, el fabricante
-y la base de datos, escribe `appsettings.json`, comprueba que Gregal puede usar
+Firebird responde, pregunta el puerto COM, el fabricante, la sala, la concesión
+(propone `999` en las salas MCB), la base de datos y la contraseña de SYSDBA, escribe `appsettings.json`, comprueba que Gregal puede usar
 esa base de datos y registra el servicio (o, con `-AlIniciarSesion` o
 `-SinServicio`, deja Gregal en consola: ver más abajo). Si ya tienes un `appsettings.json` de esa sala,
 cópialo encima en lugar de ejecutar el script.
@@ -122,7 +132,10 @@ Está junto a `Gregal.exe`. Los cambios se aplican al reiniciar Gregal.
 | `DatabaseSettings:MaxLongitudBolas` | Longitud de la columna `BOLAS` (255; 300 si se amplió). Ver más abajo. |
 | `NetworkSettings:Enabled` | Activa el protocolo JSON/CSV antiguo (por defecto `false`). |
 
-La cadena de conexión incluye la contraseña de Firebird en texto plano.
+La cadena de conexión incluye la contraseña de Firebird en texto plano. El
+`appsettings.json` del repositorio (que es público) lleva `masterkey`, la de
+Firebird recién instalado: el instalador pregunta la de cada sala y la escribe
+en el fichero de esa sala.
 
 ## Protocolo de eventos
 
@@ -229,6 +242,9 @@ dotnet run --project Gregal                        # ejecutar en consola
   se copia a cada sala nueva (versionada; nunca escribas datos en ella). Para
   desarrollo, copia la plantilla como `Gregal/Data/GREGAL_DEV.FDB` (ignorada
   por git); `dotnet run` la usa a través de `appsettings.Development.json`.
+  La contraseña real va en *user secrets*, fuera del repositorio:
+  `dotnet user-secrets set "DatabaseSettings:ConnectionString" "User=SYSDBA;Password=...;Database=...GREGAL_DEV.FDB;..."`
+  desde `Gregal/`.
 - **Pruebas sin máquina:** con [com0com](https://com0com.sourceforge.net/)
   se crea una pareja de puertos virtuales (p. ej. COM8 ↔ COM9). Gregal escucha
   en uno y [Hercules](https://www.hw-group.com/software/hercules-setup-utility)
@@ -254,7 +270,7 @@ Gregal/
 ├── Models/           HistoricoDTO y tipos auxiliares
 ├── Protocol/         Respuestas del protocolo JSON/CSV
 ├── Diagnostics/      Datos del PC para el banner
-├── Deploy/           Instalar-Gregal.ps1 y Actualizar-Gregal.ps1
+├── Deploy/           Instalar-Gregal.ps1, Actualizar-Gregal.ps1 y Buscar-Actualizacion.ps1
 └── Docs/             Especificaciones, capturas reales y migraciones SQL
 Gregal.Tests/         Tests (xUnit)
 Instalador/           Instalador Inno Setup (Gregal.iss) y script para generarlo
