@@ -8,9 +8,9 @@
 ;   - Sala nueva: copia los ficheros y lanza Instalar-Gregal.ps1 para
 ;     configurar la sala (puerto COM, sala, fabricante, base de datos, que
 ;     comprueba con "Gregal.exe --comprobar-bd"). Según la opción elegida,
-;     registra el servicio (por defecto), deja Gregal en la carpeta Inicio
-;     para que se abra al iniciar sesión, o solo un acceso directo en el
-;     escritorio para arrancarlo a mano.
+;     deja Gregal en la carpeta Inicio para que se abra al iniciar sesión
+;     (por defecto), registra el servicio, o deja solo un acceso directo en
+;     el escritorio para arrancarlo a mano.
 ;   - Sala con Gregal (existe el servicio, o una instalación previa de este
 ;     .exe aunque sea sin servicio): para el servicio si lo hay, sustituye el
 ;     programa SIN tocar appsettings.json ni la base de datos, y vuelve a
@@ -90,8 +90,10 @@ Type: files; Name: "{app}\Actualizar-Gregal.ps1"
 ; Solo en una sala nueva: al actualizar se respeta lo que ya hay. Sin
 ; servicio, Gregal es una ventana de consola y solo recibe partidas mientras
 ; está abierta.
-Name: "servicio"; Description: "Servicio de Windows: arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive; Check: not EsActualizacion
-Name: "inicio"; Description: "Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
+; Por defecto, la ventana al iniciar Windows: los PCs de las salas entran
+; solos al escritorio y así se ve Gregal en pantalla.
+Name: "inicio"; Description: "Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio; lo normal en nuestras salas)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive; Check: not EsActualizacion
+Name: "servicio"; Description: "Servicio de Windows: arranca al encender el PC aunque nadie entre al escritorio, sin ventana"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
 Name: "manual"; Description: "Ventana de consola a mano, con un acceso directo en el escritorio"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
 
 [Run]

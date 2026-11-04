@@ -84,8 +84,9 @@ carpeta.
 El instalador y «Configurar Gregal» preguntan cómo arranca Gregal (para
 cambiarlo después, basta con volver a abrir «Configurar Gregal»):
 
-- **Servicio de Windows**.
-- **Ventana de consola al iniciar Windows** (`-AlIniciarSesion` en
+- **Servicio de Windows**: arranca aunque nadie entre al escritorio, sin ventana.
+- **Ventana de consola al iniciar Windows** (la opción por defecto, lo normal en
+  nuestras salas, cuyos PCs entran solos al escritorio; `-AlIniciarSesion` en
   `Instalar-Gregal.ps1`): pone el acceso directo `Gregal.lnk` en la carpeta
   Inicio de todos los usuarios
   (`C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp`). Solo se abre

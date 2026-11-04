@@ -248,14 +248,15 @@ if ($ConServicio) { $instalarServicio = $true }
 elseif ($AlIniciarSesion) { $instalarServicio = $false; $arrancarAlIniciarSesion = $true }
 elseif ($SinServicio) { $instalarServicio = $false }
 else {
-    # Por defecto, el modo que ya tiene este PC.
-    $arranqueActual = "1"
+    # Por defecto, el modo que ya tiene este PC; en uno sin nada, la ventana
+    # al iniciar Windows (lo normal en nuestras salas).
+    $arranqueActual = "2"
     if (Get-Service -Name $ServicioActual -ErrorAction SilentlyContinue) { $arranqueActual = "1" }
     elseif ((Test-Path $accesoInicio) -or (Test-Path $accesoInicioUsuario)) { $arranqueActual = "2" }
     elseif (Test-Path $accesoEscritorio) { $arranqueActual = "3" }
     Write-Step "Cómo arranca Gregal"
-    Write-Host "  1) Servicio de Windows: arranca solo al encender el PC, sin nadie conectado"
-    Write-Host "  2) Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio)"
+    Write-Host "  1) Servicio de Windows: arranca al encender el PC aunque nadie entre al escritorio, sin ventana"
+    Write-Host "  2) Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio; lo normal en nuestras salas)"
     Write-Host "  3) Ventana de consola a mano, con el acceso directo del escritorio"
     Write-Host "  Sin servicio, Gregal solo recibe partidas mientras su ventana esté abierta."
     $opcionArranque = Read-WithDefault "Elige una opción" $arranqueActual

@@ -20,8 +20,8 @@ INSTALAR (una vez por PC)
    https://github.com/FranciscoVaprel/Gregal/releases
 2. Doble clic y acepta los permisos de administrador.
 3. Elige cómo arranca Gregal:
-     - Ventana de consola al iniciar Windows: si el PC entra solo al
-       escritorio (lo normal en nuestras salas).
+     - Ventana de consola al iniciar Windows (viene marcada): si el PC
+       entra solo al escritorio (lo normal en nuestras salas).
      - Servicio de Windows: arranca aunque nadie entre al escritorio.
 4. Contesta las preguntas. Intro acepta lo que sale entre [corchetes]:
      - Puerto COM: sale la lista de puertos del PC.
