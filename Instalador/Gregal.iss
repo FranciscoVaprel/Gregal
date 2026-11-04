@@ -65,7 +65,9 @@ SetupLogging=yes
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Files]
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "appsettings.json,appsettings.Development.json"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Actualizar-Gregal.ps1 es para actualizar con el zip (se ejecuta desde la
+; versión nueva descomprimida): en la carpeta instalada solo confundía.
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "appsettings.json,appsettings.Development.json,Actualizar-Gregal.ps1"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; La configuración y la base de datos de la sala no se sobrescriben nunca ni
 ; se borran al desinstalar.
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
@@ -76,26 +78,33 @@ Source: "{#TemplateFdb}"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveru
 ; Busca en GitHub una versión más nueva y la instala en silencio con este
 ; mismo .exe (Buscar-Actualizacion.ps1, copiado con el resto del programa).
 Name: "{commondesktop}\Actualizar Gregal"; Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Buscar-Actualizacion.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\Gregal.exe"; Comment: "Buscar e instalar una versión nueva de Gregal"
+; Puerto COM, sala, fabricante, base de datos, contraseña y cómo arranca
+; Gregal (Instalar-Gregal.ps1 propone lo que ya hay y pide administrador).
+Name: "{commondesktop}\Configurar Gregal"; Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Instalar-Gregal.ps1"" -Pausar"; WorkingDir: "{app}"; IconFilename: "{app}\Gregal.exe"; Comment: "Cambiar la configuración de Gregal y cómo arranca"
+
+[InstallDelete]
+; Ver [Files]: lo dejaban las versiones hasta la 1.0.10.
+Type: files; Name: "{app}\Actualizar-Gregal.ps1"
 
 [Tasks]
 ; Solo en una sala nueva: al actualizar se respeta lo que ya hay. Sin
 ; servicio, Gregal es una ventana de consola y solo recibe partidas mientras
 ; está abierta.
 Name: "servicio"; Description: "Servicio de Windows: arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive; Check: not EsActualizacion
-Name: "inicio"; Description: "Ventana de consola al iniciar sesión en Windows (necesita que alguien inicie sesión, o inicio de sesión automático)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
+Name: "inicio"; Description: "Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio)"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
 Name: "manual"; Description: "Ventana de consola a mano, con un acceso directo en el escritorio"; GroupDescription: "Cómo arranca Gregal:"; Flags: exclusive unchecked; Check: not EsActualizacion
 
 [Run]
 ; Sala nueva: configuración (Instalar-Gregal.ps1 registra y arranca el
 ; servicio y enseña el log, o crea los accesos directos si va sin servicio).
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1' -ConServicio; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Tasks: servicio; Check: not EsActualizacion; Flags: waituntilterminated
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1' -AlIniciarSesion; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Tasks: inicio; Check: not EsActualizacion; Flags: waituntilterminated
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1' -SinServicio; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; StatusMsg: "Configurando la sala..."; Tasks: manual; Check: not EsActualizacion; Flags: waituntilterminated
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Instalar-Gregal.ps1"" -ConServicio -Pausar"; StatusMsg: "Configurando la sala..."; Tasks: servicio; Check: not EsActualizacion; Flags: waituntilterminated
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Instalar-Gregal.ps1"" -AlIniciarSesion -Pausar"; StatusMsg: "Configurando la sala..."; Tasks: inicio; Check: not EsActualizacion; Flags: waituntilterminated
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Instalar-Gregal.ps1"" -SinServicio -Pausar"; StatusMsg: "Configurando la sala..."; Tasks: manual; Check: not EsActualizacion; Flags: waituntilterminated
 ; Actualización: se vuelve a arrancar el servicio con la versión nueva, o se
 ; ofrece arrancar Gregal si va sin servicio.
 Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; StatusMsg: "Arrancando el servicio..."; Check: EsActualizacion and TieneServicio; Flags: runhidden waituntilterminated
 Filename: "{app}\Gregal.exe"; WorkingDir: "{app}"; Description: "Arrancar Gregal"; Check: EsActualizacion and not TieneServicio; Flags: postinstall nowait runasoriginaluser
-Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""& '{app}\Instalar-Gregal.ps1'; Read-Host 'Pulsa Intro para cerrar esta ventana'"""; Description: "Volver a configurar la sala (puerto COM, sala, fabricante, base de datos, servicio)"; Check: EsActualizacion; Flags: postinstall unchecked waituntilterminated
+Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Instalar-Gregal.ps1"" -Pausar"; Description: "Configurar Gregal (puerto COM, sala, fabricante, base de datos, cómo arranca)"; Check: EsActualizacion; Flags: postinstall unchecked waituntilterminated
 
 [UninstallDelete]
 ; Los accesos directos los crea Instalar-Gregal.ps1 cuando va sin servicio.

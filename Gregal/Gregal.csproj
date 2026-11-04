@@ -28,9 +28,12 @@
   </ItemGroup>
 
   <!-- Los scripts de instalación/actualización van en la raíz del publish,
-       junto a Gregal.exe (ahí los espera cada script). -->
+       junto a Gregal.exe (ahí los espera cada script). Los .cmd los lanzan
+       con doble clic, sin el bloqueo de scripts .ps1 de Windows. -->
   <ItemGroup>
     <None Include="Deploy\*.ps1" Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Deploy\*.cmd" Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Deploy\LEEME.txt" Link="LEEME.txt" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Parser del protocolo tag, DTO y paso a columnas de HISTORICO: compartido

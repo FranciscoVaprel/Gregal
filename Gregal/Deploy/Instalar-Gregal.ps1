@@ -1,10 +1,13 @@
-﻿#Requires -RunAsAdministrator
-<#
-    Instalador de Gregal (Receptor de Bingo) para una sala nueva.
+﻿<#
+    Configuración de Gregal (Receptor de Bingo): la primera vez en una sala
+    nueva y siempre que haya que cambiar algo (puerto COM, sala, fabricante,
+    base de datos, contraseña o cómo arranca Gregal).
 
-    Uso: este script debe estar en la MISMA carpeta que Gregal.exe (la carpeta
-    publicada con `dotnet publish`). Ejecutarlo con "Ejecutar con PowerShell"
-    como Administrador, o desde una consola de PowerShell elevada:
+    Lo normal es abrirlo con doble clic en "Configurar Gregal" (escritorio) o
+    en Configurar.cmd (carpeta de Gregal), que se saltan el bloqueo de scripts
+    de Windows. Si no tiene permisos de administrador, los pide él solo. Cada
+    pregunta propone lo que ya hay en appsettings.json: Intro lo deja igual.
+    Tiene que estar en la MISMA carpeta que Gregal.exe.
 
         .\Instalar-Gregal.ps1                 # pregunta cómo arrancar Gregal
         .\Instalar-Gregal.ps1 -ConServicio    # servicio de Windows
@@ -30,7 +33,9 @@
 param(
     [switch]$ConServicio,
     [switch]$SinServicio,
-    [switch]$AlIniciarSesion
+    [switch]$AlIniciarSesion,
+    # Espera a Intro antes de cerrar la ventana (accesos directos y .cmd).
+    [switch]$Pausar
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,6 +46,25 @@ $ExePath = Join-Path $InstallDir "Gregal.exe"
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Warn($msg) { Write-Host "! $msg" -ForegroundColor Yellow }
 function Write-Ok($msg) { Write-Host "OK $msg" -ForegroundColor Green }
+function Salir([int]$Codigo) {
+    if ($Pausar) { Read-Host "`nPulsa Intro para cerrar esta ventana" | Out-Null }
+    exit $Codigo
+}
+
+# Servicio, firewall y carpeta Inicio de todos los usuarios necesitan
+# administrador: si no lo es, se vuelve a lanzar elevado (Windows pide
+# confirmación) con los mismos parámetros y esta ventana se cierra.
+$esAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $esAdmin) {
+    $argumentos = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Pausar"
+    foreach ($s in 'ConServicio', 'SinServicio', 'AlIniciarSesion') {
+        if ((Get-Variable $s -ValueOnly).IsPresent) { $argumentos += " -$s" }
+    }
+    try { Start-Process powershell.exe -Verb RunAs -ArgumentList $argumentos }
+    catch { Write-Warn "Hacen falta permisos de administrador para configurar Gregal."; Salir 1 }
+    exit 0
+}
 
 function Read-WithDefault($prompt, $default) {
     $value = Read-Host "$prompt [$default]"
@@ -119,24 +143,34 @@ function Set-JsonStringInSection([string]$Content, [string]$Section, [string]$Ke
     return Set-JsonScalarInSection $Content $Section $Key "`"$escaped`""
 }
 
+# Valor actual de una clave escalar de una sección, sin comillas ($null si
+# no está): se propone como respuesta por defecto en cada pregunta.
+function Get-JsonValueInSection([string]$Content, [string]$Section, [string]$Key) {
+    try { $rango = Get-JsonSectionRange $Content $Section } catch { return $null }
+    $dentro = $Content.Substring($rango.Inicio, $rango.Fin - $rango.Inicio + 1)
+    $m = [regex]::Match($dentro, "(?m)^\s*""$Key""\s*:\s*(?:""([^""]*)""|([^,\r\n/]+))")
+    if (-not $m.Success) { return $null }
+    if ($m.Groups[1].Success) { return $m.Groups[1].Value }
+    return $m.Groups[2].Value.Trim()
+}
+
 # ── Comprobaciones previas ──────────────────────────────────────────────
 Write-Step "Comprobando requisitos"
 
 if (-not (Test-Path $ExePath)) {
     Write-Warn "No se encuentra Gregal.exe en '$InstallDir'."
     Write-Warn "Este script debe ejecutarse desde la carpeta publicada (junto a Gregal.exe)."
-    exit 1
+    Salir 1
 }
 
-# Este script vuelve a preguntar toda la configuración y reescribe
-# appsettings.json: en un PC que ya tiene Gregal, lo normal es actualizar.
-if (Get-Service -Name "GregalReceiverService" -ErrorAction SilentlyContinue) {
-    Write-Warn "Gregal ya está instalado en este PC (existe el servicio 'GregalReceiverService')."
-    Write-Warn "Para actualizarlo SIN perder la configuración de la sala, descomprime la versión nueva"
-    Write-Warn "en otra carpeta y ejecuta Actualizar-Gregal.ps1 desde allí."
-    $reinstalar = Read-Host "¿Reinstalar de todos modos, volviendo a configurar la sala? (s/N)"
-    if ($reinstalar -notmatch "^[sS]") { exit 1 }
-}
+# Configuración actual: cada pregunta la propone por defecto.
+$actual = [System.IO.File]::ReadAllText($AppSettingsPath)
+$ServicioActual = "GregalReceiverService"
+$accesoInicio = Join-Path ([Environment]::GetFolderPath("CommonStartup")) "Gregal.lnk"
+# El de la carpeta Inicio del usuario: el que se ponía a mano antes de que
+# Gregal-Setup tuviera esta opción.
+$accesoInicioUsuario = Join-Path ([Environment]::GetFolderPath("Startup")) "Gregal.lnk"
+$accesoEscritorio = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Gregal.lnk"
 
 $dotnetOk = $false
 $dotnetIncluido = Test-Path (Join-Path $InstallDir "coreclr.dll")   # publicación autocontenida
@@ -158,7 +192,7 @@ else {
     Write-Warn ".NET 10 Runtime (win-x64) no se detecta en este PC."
     Write-Warn "Descárgalo de https://dotnet.microsoft.com/download/dotnet/10.0 antes de continuar (elige 'Runtime', no hace falta el SDK)."
     $continuar = Read-Host "¿Continuar de todos modos con la instalación? (s/N)"
-    if ($continuar -notmatch "^[sS]") { exit 1 }
+    if ($continuar -notmatch "^[sS]") { Salir 1 }
 }
 
 # Firebird: servidor y puerto de la cadena de conexión de appsettings.json.
@@ -204,7 +238,7 @@ else {
         }
         Write-Warn "Sin Firebird, Gregal no podrá guardar las partidas."
         $continuar = Read-Host "¿Continuar de todos modos con la instalación? (s/N)"
-        if ($continuar -notmatch "^[sS]") { exit 1 }
+        if ($continuar -notmatch "^[sS]") { Salir 1 }
     }
 }
 
@@ -214,12 +248,17 @@ if ($ConServicio) { $instalarServicio = $true }
 elseif ($AlIniciarSesion) { $instalarServicio = $false; $arrancarAlIniciarSesion = $true }
 elseif ($SinServicio) { $instalarServicio = $false }
 else {
+    # Por defecto, el modo que ya tiene este PC.
+    $arranqueActual = "1"
+    if (Get-Service -Name $ServicioActual -ErrorAction SilentlyContinue) { $arranqueActual = "1" }
+    elseif ((Test-Path $accesoInicio) -or (Test-Path $accesoInicioUsuario)) { $arranqueActual = "2" }
+    elseif (Test-Path $accesoEscritorio) { $arranqueActual = "3" }
     Write-Step "Cómo arranca Gregal"
-    Write-Host "  1) Servicio de Windows: arranca solo al encender el PC, sin nadie conectado (lo normal en una sala)"
-    Write-Host "  2) Ventana de consola al iniciar sesión en Windows (necesita que alguien inicie sesión, o inicio de sesión automático)"
+    Write-Host "  1) Servicio de Windows: arranca solo al encender el PC, sin nadie conectado"
+    Write-Host "  2) Ventana de consola al iniciar Windows (el PC tiene que entrar solo al escritorio)"
     Write-Host "  3) Ventana de consola a mano, con el acceso directo del escritorio"
     Write-Host "  Sin servicio, Gregal solo recibe partidas mientras su ventana esté abierta."
-    $opcionArranque = Read-WithDefault "Elige una opción" "1"
+    $opcionArranque = Read-WithDefault "Elige una opción" $arranqueActual
     $instalarServicio = $opcionArranque -notin @("2", "3")
     $arrancarAlIniciarSesion = $opcionArranque -eq "2"
 }
@@ -229,14 +268,22 @@ Write-Step "Protocolo de esta sala"
 Write-Host "  1) Protocolo de eventos 'tag' por RS232 (*CODIGO<valor>#) - RECOMENDADO, es el que se ha probado"
 Write-Host "  2) Protocolo JSON/CSV antiguo, por TCP y/o RS232"
 Write-Host "  3) Los dos a la vez (puertos COM distintos)"
-$opcionProtocolo = Read-WithDefault "Elige una opción" "1"
+$protocoloActual = "1"
+if ((Get-JsonValueInSection $actual "NetworkSettings" "Enabled") -eq "true") {
+    $protocoloActual = "2"
+    if ((Get-JsonValueInSection $actual "TagProtocolSettings" "Enabled") -eq "true") { $protocoloActual = "3" }
+}
+$opcionProtocolo = Read-WithDefault "Elige una opción" $protocoloActual
 
 $usarTag = $opcionProtocolo -in @("1", "3")
 $usarJsonCsv = $opcionProtocolo -in @("2", "3")
 
 if ($usarTag) {
     Write-Step "Configuración del protocolo de eventos (tag)"
-    $TagComPort = Read-PuertoCom "Puerto COM donde está conectado el hardware de la sala" "COM1"
+    $comActual = Get-JsonValueInSection $actual "TagProtocolSettings" "ComPort"
+    if (-not $comActual) { $comActual = "COM1" }
+    elseif ($comActual -match '^\d+$') { $comActual = "COM$comActual" }
+    $TagComPort = Read-PuertoCom "Puerto COM donde está conectado el hardware de la sala" $comActual
 
     # Hay (al menos) dos fabricantes de hardware con protocolos parecidos
     # pero no idénticos (confirmado 2026-10-14): en Metronia los códigos A/M/p
@@ -246,19 +293,27 @@ if ($usarTag) {
     Write-Host ""
     Write-Host "Esta sala puede tener distinto hardware: en los códigos A, M y p (línea plus/"
     Write-Host "prima/bola tope de prima) cambia el comportamiento según el fabricante:"
-    Write-Host "  1) Metronia - A/M/p llevan importes reales (RECOMENDADO si no lo sabes seguro)"
-    Write-Host "  2) MCB      - A/M/p son ruido del hardware, Gregal los ignora"
-    $opcionFabricante = Read-WithDefault "Fabricante del hardware de esta sala" "1"
-    $Fabricante = "Metronia"
-    if ($opcionFabricante -eq "2") { $Fabricante = "MCB" }
+    Write-Host "  1) MCB      - A/M/p son ruido del hardware, Gregal los ignora (lo normal en nuestras salas)"
+    Write-Host "  2) Metronia - A/M/p llevan importes reales"
+    $fabricanteActual = "1"
+    if ((Get-JsonValueInSection $actual "TagProtocolSettings" "Fabricante") -eq "Metronia") { $fabricanteActual = "2" }
+    $opcionFabricante = Read-WithDefault "Fabricante del hardware de esta sala" $fabricanteActual
+    $Fabricante = "MCB"
+    if ($opcionFabricante -eq "2") { $Fabricante = "Metronia" }
 
-    # Después del fabricante: en las salas MCB la concesión es 999.
-    $CodConcPorDefecto = "1"
-    if ($Fabricante -eq "MCB") { $CodConcPorDefecto = "999" }
+    # Después del fabricante: en las salas MCB la concesión es 999. Lo que ya
+    # haya configurado se respeta, salvo el 1 de la plantilla.
+    $CodSalaActual = Get-JsonValueInSection $actual "TagProtocolSettings" "DefaultCodSala"
+    if (-not $CodSalaActual) { $CodSalaActual = "1" }
+    $CodConcPorDefecto = Get-JsonValueInSection $actual "TagProtocolSettings" "DefaultCodConc"
+    if ($CodConcPorDefecto -in @($null, "", "0", "1")) {
+        $CodConcPorDefecto = "1"
+        if ($Fabricante -eq "MCB") { $CodConcPorDefecto = "999" }
+    }
     Write-Host ""
     Write-Host "CodSala/CodConc identifican esta sala en Firebird (columnas COD_SALA/COD_CONC de HISTORICO)."
     Write-Host "Tienen que ser valores reales y distintos de 0, o Gregal rechazará guardar las partidas."
-    $CodSala = Read-WithDefault "Código de sala (CodSala)" "1"
+    $CodSala = Read-WithDefault "Código de sala (CodSala)" $CodSalaActual
     $CodConc = Read-WithDefault "Código de concesión (CodConc)" $CodConcPorDefecto
 }
 
@@ -277,7 +332,11 @@ if (-not $ServiceName) {
 }
 
 Write-Step "Base de datos Firebird"
+# La ruta actual si ese fichero existe (p. ej. C:\DatosCV\aamslog.FDB); si
+# no, la de la carpeta de Gregal, donde se copia la plantilla vacía.
 $DefaultDbPath = Join-Path $InstallDir "Data\GREGAL.FDB"
+$dbActual = [regex]::Match($actual, '(?<="ConnectionString"\s*:\s*"[^"]*)Database=([^;"]*)').Groups[1].Value.Replace('\\', '\')
+if ($dbActual -and (Test-Path $dbActual)) { $DefaultDbPath = $dbActual }
 $DbPath = Read-WithDefault "Ruta completa del fichero .FDB de esta sala" $DefaultDbPath
 
 # La contraseña de SYSDBA no va en el appsettings.json publicado (el
@@ -373,8 +432,8 @@ else {
     Write-Warn "(Firebird, ruta del .FDB, contraseña de SYSDBA o columnas de la tabla)."
     $continuar = Read-Host "¿Continuar de todos modos? (s/N)"
     if ($continuar -notmatch "^[sS]") {
-        Write-Warn "Instalación detenida. appsettings.json ya está escrito: corrígelo y vuelve a ejecutar este script."
-        exit 1
+        Write-Warn "Configuración detenida. appsettings.json ya está escrito: corrige lo anterior y vuelve a abrir 'Configurar Gregal'."
+        Salir 1
     }
 }
 
@@ -391,13 +450,24 @@ function New-AccesoDirecto([string]$Ruta) {
     $lnk.Save()
 }
 
-# Acceso directo de la carpeta Inicio de todos los usuarios: se quita en
-# cualquier otro modo para que no arranquen dos Gregal (servicio y consola)
-# peleándose por el mismo puerto COM.
-$accesoInicio = Join-Path ([Environment]::GetFolderPath("CommonStartup")) "Gregal.lnk"
-if (-not $arrancarAlIniciarSesion -and (Test-Path $accesoInicio)) {
-    Remove-Item $accesoInicio -Force
-    Write-Ok "Quitado el arranque de Gregal al iniciar sesión ($accesoInicio)."
+# Accesos directos de la carpeta Inicio: se quitan en cualquier otro modo
+# para que no arranquen dos Gregal (servicio y consola) peleándose por el
+# mismo puerto COM. El del usuario se quita siempre: con el modo 2 queda el
+# de todos los usuarios.
+foreach ($acceso in $accesoInicio, $accesoInicioUsuario) {
+    if ((Test-Path $acceso) -and (-not $arrancarAlIniciarSesion -or $acceso -eq $accesoInicioUsuario)) {
+        Remove-Item $acceso -Force
+        Write-Ok "Quitado el arranque de Gregal al iniciar sesión ($acceso)."
+    }
+}
+
+# Un Gregal de consola abierto tiene el puerto COM y la configuración vieja:
+# se cierra (con servicio, para siempre; sin él, se ofrece abrirlo al final).
+$consolaAbierta = @(Get-Process Gregal -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ExePath })
+if ($consolaAbierta.Count -gt 0) {
+    Write-Warn "Gregal está abierto en una ventana: se cierra para aplicar la configuración nueva."
+    $consolaAbierta | Stop-Process -Force
+    Start-Sleep -Seconds 2
 }
 
 if ($instalarServicio) {
@@ -423,9 +493,8 @@ else {
         Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
         & sc.exe delete $ServiceName | Out-Null
     }
-    $accesoDirecto = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Gregal.lnk"
-    New-AccesoDirecto $accesoDirecto
-    Write-Ok "Acceso directo creado en el escritorio: $accesoDirecto"
+    New-AccesoDirecto $accesoEscritorio
+    Write-Ok "Acceso directo creado en el escritorio: $accesoEscritorio"
     if ($arrancarAlIniciarSesion) {
         New-AccesoDirecto $accesoInicio
         Write-Ok "Gregal arrancará al iniciar sesión en Windows: $accesoInicio"
@@ -450,16 +519,16 @@ else {
 }
 
 if (-not $instalarServicio) {
-    Write-Step "Instalación terminada (sin servicio)"
+    Write-Step "Configuración terminada (sin servicio)"
     if ($arrancarAlIniciarSesion) {
-        Write-Host "Gregal se abrirá cada vez que alguien inicie sesión en Windows. Si el PC arranca sin iniciar sesión,"
-        Write-Host "Gregal no se abre: configura el inicio de sesión automático o usa el servicio."
+        Write-Host "Gregal se abrirá cada vez que se inicie Windows. Si el PC se queda en la pantalla de inicio"
+        Write-Host "de sesión, Gregal no se abre: configura el inicio de sesión automático o usa el servicio."
     }
     Write-Host "Gregal solo recibe partidas mientras está abierto: si se cierra, arráncalo con el acceso directo 'Gregal' del escritorio"
     Write-Host "y deja la ventana abierta (se cierra con Ctrl+C)."
     $arrancar = Read-Host "¿Arrancar Gregal ahora? (S/n)"
     if ($arrancar -notmatch "^[nN]") { Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir }
-    exit 0
+    Salir 0
 }
 
 # ── Arrancar el servicio ──────────────────────────────────────────────────
@@ -479,7 +548,7 @@ else {
     Write-Warn "Todavía no hay ningún fichero de log en '$logsDir'."
 }
 
-Write-Step "Instalación terminada"
+Write-Step "Configuración terminada"
 if ($usarTag) {
     Write-Host "Revisa el log anterior: debería decir 'Puerto serie (protocolo tag) abierto: $TagComPort'."
     Write-Host "Fabricante configurado: $Fabricante."
@@ -488,3 +557,4 @@ if ($usarJsonCsv) {
     Write-Host "Revisa el log anterior: debería decir 'Servidor TCP iniciado' y, si usas su puerto serie, 'Puerto serie abierto'."
 }
 Write-Host "Si un puerto serie falla, comprueba que el ComPort configurado es el correcto en este PC y que ningún otro programa lo tiene abierto."
+Salir 0

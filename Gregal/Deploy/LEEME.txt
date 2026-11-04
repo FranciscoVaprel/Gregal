@@ -1,0 +1,66 @@
+﻿GREGAL - GUÍA RÁPIDA PARA LA SALA
+=================================
+
+Gregal recibe las partidas de la máquina de bingo por el puerto serie (COM)
+y las guarda en la base de datos Firebird de la sala. Todo se hace con
+doble clic en el escritorio: no hace falta escribir comandos.
+
+
+ANTES DE INSTALAR
+-----------------
+1. Firebird 2.5 instalado como servicio, con la contraseña de SYSDBA que
+   usáis en las salas.
+2. La base de datos de la sala en su sitio (por ejemplo C:\DatosCV\aamslog.FDB).
+3. El cable de la máquina conectado al PC.
+
+
+INSTALAR (una vez por PC)
+-------------------------
+1. Descarga Gregal-Setup-x.y.z.exe de
+   https://github.com/FranciscoVaprel/Gregal/releases
+2. Doble clic y acepta los permisos de administrador.
+3. Elige cómo arranca Gregal:
+     - Ventana de consola al iniciar Windows: si el PC entra solo al
+       escritorio (lo normal en nuestras salas).
+     - Servicio de Windows: arranca aunque nadie entre al escritorio.
+4. Contesta las preguntas. Intro acepta lo que sale entre [corchetes]:
+     - Puerto COM: sale la lista de puertos del PC.
+     - Fabricante: 1 = MCB (lo normal), 2 = Metronia.
+     - Código de sala y de concesión (en MCB, la concesión es 999).
+     - Ruta de la base de datos, p. ej. C:\DatosCV\aamslog.FDB
+     - Contraseña de SYSDBA (no se ve al escribirla).
+5. Al final comprueba la base de datos. Tiene que decir "Base de datos lista".
+
+
+EN EL ESCRITORIO QUEDAN
+-----------------------
+  Gregal              Abre Gregal (si se ha cerrado).
+  Actualizar Gregal   Busca una versión nueva y la instala. Conserva la
+                      configuración y la base de datos. Mejor sin una
+                      partida en marcha: Gregal se para unos segundos.
+  Configurar Gregal   Cambiar el puerto COM, la sala, el fabricante, la base
+                      de datos, la contraseña o cómo arranca Gregal. Propone
+                      lo que ya hay: Intro deja cada cosa como está.
+
+Lo mismo está en la carpeta de Gregal (C:\Gregal): Actualizar.cmd y
+Configurar.cmd.
+
+
+¿FUNCIONA?
+----------
+En la ventana de Gregal (o en C:\Gregal\logs, si es servicio) tiene que
+salir:  Puerto serie (protocolo tag) abierto: COMx
+Y al acabar cada partida:  PARTIDA GUARDADA
+
+
+PROBLEMAS FRECUENTES
+--------------------
+- No guarda partidas / error de usuario y contraseña: la contraseña de
+  SYSDBA no es la de este Firebird. Configurar Gregal -> escribir la buena.
+- "Access to COMx denied": otro programa (u otro Gregal) tiene el puerto.
+  Que solo haya uno: o servicio, o ventana.
+- La ventana de Gregal se queda parada: se ha hecho clic dentro (Windows
+  congela la ventana al seleccionar texto). Pulsa Esc.
+- Gregal no se abre al encender: el PC no entró al escritorio, o se eligió
+  "servicio" o "a mano". Configurar Gregal -> cómo arranca -> opción 2.
+- No cerrar la ventana de Gregal: mientras está cerrada no recibe partidas.
