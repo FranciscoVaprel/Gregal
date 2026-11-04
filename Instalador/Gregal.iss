@@ -16,6 +16,10 @@
 ;     programa SIN tocar appsettings.json ni la base de datos, y vuelve a
 ;     arrancar el servicio. La configuración de la versión nueva queda como
 ;     appsettings.json.nuevo.
+;   - En los dos casos deja en el escritorio "Actualizar Gregal", que busca
+;     una versión nueva en GitHub y la instala con este .exe en silencio
+;     (/VERYSILENT: la entrada postinstall "Arrancar Gregal" se ejecuta
+;     igual, porque no lleva skipifsilent).
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -67,6 +71,11 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "appsettings.json,appsett
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; DestName: "appsettings.json.nuevo"; Flags: ignoreversion
 Source: "{#TemplateFdb}"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
+
+[Icons]
+; Busca en GitHub una versión más nueva y la instala en silencio con este
+; mismo .exe (Buscar-Actualizacion.ps1, copiado con el resto del programa).
+Name: "{commondesktop}\Actualizar Gregal"; Filename: "{#PowerShell}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Buscar-Actualizacion.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\Gregal.exe"; Comment: "Buscar e instalar una versión nueva de Gregal"
 
 [Tasks]
 ; Solo en una sala nueva: al actualizar se respeta lo que ya hay. Sin
