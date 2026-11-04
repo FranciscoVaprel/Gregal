@@ -35,9 +35,15 @@ trae tres ficheros:
 | `Gregal-<versión>-win-x64.zip` | Instalación completa sin instalador (por si el antivirus bloquea el `.exe`). |
 | `Gregal-<versión>-actualizacion-sin-config.zip` | Actualización a mano: no lleva `appsettings.json` ni ninguna `.FDB`, así que se puede copiar entero encima de la instalación. |
 
-**Actualizar con un clic:** a partir de la 1.0.10, el instalador deja en el
-escritorio el acceso directo **«Actualizar Gregal»**
-(`Buscar-Actualizacion.ps1`). Mira en GitHub si hay una versión más nueva que
+**En la sala, todo con doble clic.** No hace falta escribir comandos: el
+instalador deja en el escritorio **«Actualizar Gregal»** y **«Configurar
+Gregal»** (y la carpeta de Gregal tiene `Actualizar.cmd`, `Configurar.cmd` y
+`LEEME.txt`, la guía rápida de una página). Los `.ps1` sueltos no se pueden
+ejecutar con `.\script.ps1` en un Windows normal (bloqueo de scripts): usa los
+accesos directos o los `.cmd`, que lo saltan.
+
+**Actualizar con un clic:** a partir de la 1.0.10, **«Actualizar Gregal»**
+(`Buscar-Actualizacion.ps1`) mira en GitHub si hay una versión más nueva que
 la instalada, enseña sus cambios y, si se acepta, descarga `Gregal-Setup` y lo
 ejecuta en silencio: conserva `appsettings.json` y la base de datos, y vuelve a
 arrancar el servicio (o Gregal en consola). Pide permisos de administrador solo
@@ -49,8 +55,13 @@ El `.exe` no está firmado: Windows puede mostrar el aviso de SmartScreen
 («Más información» → «Ejecutar de todas formas») y algún antivirus lo marca
 como virus por error. En ese caso, usa los zip.
 
-**Instalación con el zip completo:** descomprímelo en la carpeta definitiva y,
-en PowerShell como administrador, ejecuta `.\Instalar-Gregal.ps1`. Comprueba que
+**Configurar Gregal** (a partir de la 1.0.11; `Instalar-Gregal.ps1`) sirve
+para la primera configuración y para cualquier cambio posterior: cada pregunta
+propone lo que ya hay en `appsettings.json` (Intro lo deja igual), y pide
+permisos de administrador él solo.
+
+**Instalación con el zip completo:** descomprímelo en la carpeta definitiva y
+haz doble clic en `Configurar.cmd`. Comprueba que
 Firebird responde, pregunta el puerto COM, el fabricante, la sala, la concesión
 (propone `999` en las salas MCB), la base de datos y la contraseña de SYSDBA, escribe `appsettings.json`, comprueba que Gregal puede usar
 esa base de datos y registra el servicio (o, con `-AlIniciarSesion` o
@@ -64,24 +75,30 @@ columnas que Gregal escribe.
 
 **Actualización a mano:** para Gregal, copia encima el contenido del zip de
 actualización y vuelve a arrancarlo. `Actualizar-Gregal.ps1` (incluido en los
-zip) hace lo mismo con copia de seguridad, ejecutándolo desde la versión nueva
-descomprimida en otra carpeta.
+zip, pero no en la carpeta instalada desde la 1.0.11) hace lo mismo con copia
+de seguridad, ejecutándolo desde la versión nueva descomprimida en otra
+carpeta.
 
 ### Servicio de Windows o consola
 
-El instalador pregunta cómo arranca Gregal:
+El instalador y «Configurar Gregal» preguntan cómo arranca Gregal (para
+cambiarlo después, basta con volver a abrir «Configurar Gregal»):
 
-- **Servicio de Windows** (por defecto, lo normal en una sala).
-- **Ventana de consola al iniciar sesión en Windows** (`-AlIniciarSesion` en
+- **Servicio de Windows**.
+- **Ventana de consola al iniciar Windows** (`-AlIniciarSesion` en
   `Instalar-Gregal.ps1`): pone el acceso directo `Gregal.lnk` en la carpeta
   Inicio de todos los usuarios
   (`C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp`). Solo se abre
   cuando alguien inicia sesión: si el PC arranca y se queda en la pantalla de
   inicio de sesión, Gregal no recibe partidas (configura el inicio de sesión
-  automático de Windows o usa el servicio). Para quitarlo, borra ese acceso
-  directo.
+  automático de Windows o usa el servicio).
 - **Ventana de consola a mano** (`-SinServicio`): solo el acceso directo del
   escritorio.
+
+Al cambiar de modo, «Configurar Gregal» quita el servicio o los accesos
+directos de Inicio que sobren (también uno puesto a mano en la carpeta Inicio
+del usuario) y cierra un Gregal de consola abierto, para que nunca haya dos
+compitiendo por el puerto COM.
 
 Como servicio (`GregalReceiverService`) arranca solo al encender el PC aunque
 nadie inicie sesión, y Windows lo puede reiniciar si se cae:
@@ -270,7 +287,7 @@ Gregal/
 ├── Models/           HistoricoDTO y tipos auxiliares
 ├── Protocol/         Respuestas del protocolo JSON/CSV
 ├── Diagnostics/      Datos del PC para el banner
-├── Deploy/           Instalar-Gregal.ps1, Actualizar-Gregal.ps1 y Buscar-Actualizacion.ps1
+├── Deploy/           Scripts de la sala (Instalar-Gregal/Configurar, Buscar-Actualizacion/Actualizar, Actualizar-Gregal) y LEEME.txt
 └── Docs/             Especificaciones, capturas reales y migraciones SQL
 Gregal.Tests/         Tests (xUnit)
 Instalador/           Instalador Inno Setup (Gregal.iss) y script para generarlo
