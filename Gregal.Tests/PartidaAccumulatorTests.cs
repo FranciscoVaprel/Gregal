@@ -83,6 +83,20 @@ public class PartidaAccumulatorTests {
     }
 
     [Fact]
+    public void Feed_CicloDeEsperaMcb_NoAbrePartida() {
+        // Lo que repite un MCB dos veces por segundo entre partidas (Cambrils,
+        // 2026-11-05). El receptor deja de anotarlo en el log mientras no haya
+        // partida en curso, así que no puede abrir una.
+        var acumulador = CreateAccumulatorSinT();
+
+        foreach (string frame in new[] { "*f#", "*f1#", "*~aB18672#" }) {
+            Assert.Null(acumulador.Feed(EventoDe(frame)));
+        }
+
+        Assert.False(acumulador.HayPartidaEnCurso);
+    }
+
+    [Fact]
     public void Feed_MientrasNoLlegaElEventoF_DevuelveNull() {
         var acumulador = CreateAccumulator();
 

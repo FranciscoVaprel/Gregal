@@ -1,6 +1,20 @@
 using Gregal.Parsing;
 
 public class TagEventParserTests {
+    [Theory]
+    [InlineData("\u0000", true)]
+    [InlineData("\u0001\u0002\u007F", true)]
+    [InlineData("", false)]
+    [InlineData("\u0000E19", false)] // un evento con el '*' perdido deja letras/cifras
+    public void SoloControl_SoloConBytesDeControl(string texto, bool esperado) {
+        Assert.Equal(esperado, TagEventParser.SoloControl(texto));
+    }
+
+    [Fact]
+    public void Visible_EscribeLosBytesDeControlEnHexadecimal() {
+        Assert.Equal(@"\x00E1\x7F", TagEventParser.Visible("\u0000E1\u007F"));
+    }
+
     [Fact]
     public void Parse_ConCodigoYValor_SeparaCorrectamente() {
         var evt = TagEventParser.Parse("*E19");

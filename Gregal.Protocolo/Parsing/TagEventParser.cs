@@ -36,6 +36,16 @@ public static class TagEventParser {
         return new Troceo(NullSiVacio(fragmento[..primera]), eventos);
     }
 
+    // Basura hecha solo de bytes de control (< 0x20 o 0x7F). Un MCB la manda
+    // en cada ciclo de espera entre partidas; no es un evento con su '*'
+    // perdido, que dejaría letras o cifras.
+    public static bool SoloControl(string texto) =>
+        texto.Length > 0 && texto.All(c => c < ' ' || c == '\u007F');
+
+    // Para el log: los bytes de control como \xNN, que si no salen invisibles.
+    public static string Visible(string texto) =>
+        string.Concat(texto.Select(c => c < ' ' || c == '\u007F' ? $"\\x{(int)c:X2}" : c.ToString()));
+
     private static string? NullSiVacio(string texto) {
         string limpio = texto.Trim(RellenoAsciiTolerado);
         return limpio.Length == 0 ? null : limpio;

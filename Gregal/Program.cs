@@ -50,6 +50,11 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.File(
         path: finalLogPath,
         rollingInterval: RollingInterval.Day,
+        // Tope de disco: ficheros de 50 MB como mucho (si un día llega a más,
+        // sigue en gregal<fecha>_001.log...) y solo los 60 últimos, unos 3 GB.
+        fileSizeLimitBytes: 50 * 1024 * 1024,
+        rollOnFileSizeLimit: true,
+        retainedFileCountLimit: 60,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 

@@ -238,7 +238,9 @@ pon `MaxLongitudBolas` a 300. En las partidas reales capturadas salieron entre
 ## Logs y diagnóstico
 
 Los logs están en la carpeta `logs` junto a `Gregal.exe`, un fichero por día
-(`gregal<AAAAMMDD>.log`), y se conservan los últimos 31.
+(`gregal<AAAAMMDD>.log`). Cada fichero llega como mucho a 50 MB: si un día da
+para más, sigue en `gregal<AAAAMMDD>_001.log`, `_002`... Se conservan los 60
+últimos ficheros (unos 3 GB como mucho).
 
 - La primera línea de cada arranque indica la versión y el modo:
   `Gregal 1.0.3+23cea73... arrancando (servicio de Windows)`.
@@ -246,6 +248,9 @@ Los logs están en la carpeta `logs` junto a `Gregal.exe`, un fichero por día
   `[FTL] Excepción no controlada...`. Si el log se corta sin línea de cierre
   y sin `[FTL]`, el proceso terminó desde fuera (apagado o corte de corriente).
 - Con `LogRawFrames` activo hay una línea por evento (unos 37 KB por partida).
+  El ciclo de espera de las máquinas MCB entre partidas (`*f#`, `*f1#`,
+  `*~…#` y unos bytes de control, dos veces por segundo) no se anota: solo
+  la primera vez de cada arranque sale `Descartados bytes de control sin '*'`.
 
 ```powershell
 Get-Content (Get-ChildItem C:\Gregal\logs\*.log | Sort-Object LastWriteTime | Select-Object -Last 1) -Tail 20 -Wait

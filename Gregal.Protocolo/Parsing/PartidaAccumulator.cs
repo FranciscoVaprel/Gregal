@@ -351,7 +351,11 @@ public class PartidaAccumulator {
             // confirmar) se ignoran por instrucción explícita del operador
             // (2026-10-14, tercera ronda: "morralla" que complica sin aportar
             // nada útil). Tratarlos como "no mapeado" inundaría el log sin motivo.
+            // '~' (p.ej. "~aB18672") llega en el ciclo de espera de un MCB,
+            // junto a *f# y dos veces por segundo (Cambrils, 2026-11-05):
+            // parece un identificador de la máquina, sin columna en HISTORICO.
             case 'f':
+            case '~':
             case 'º':
             case 'G':
             case 'S':

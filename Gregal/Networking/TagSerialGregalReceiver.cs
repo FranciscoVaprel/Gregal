@@ -58,6 +58,8 @@ namespace Gregal.Networking {
         // esperable y no indica ruido en la línea.
         private bool _resincronizar = true;
 
+        private bool _avisadoBytesControl;
+
         private readonly Channel<string> _messageChannel =
             Channel.CreateUnbounded<string>(new UnboundedChannelOptions {
                 SingleReader = true,
@@ -208,11 +210,23 @@ namespace Gregal.Networking {
                 var troceo = TagEventParser.Trocear(trozo);
 
                 if (troceo.Basura != null) {
+                    string visible = TagEventParser.Visible(troceo.Basura);
                     if (_resincronizar) {
-                        _logger.LogDebug("Descartado el resto de un evento ya empezado al (re)sincronizar: '{basura}'", troceo.Basura);
+                        _logger.LogDebug("Descartado el resto de un evento ya empezado al (re)sincronizar: '{basura}'", visible);
+                    }
+                    else if (TagEventParser.SoloControl(troceo.Basura)) {
+                        // Llega dos veces por segundo en espera: se avisa una
+                        // vez por arranque y el resto solo en Debug.
+                        if (_avisadoBytesControl) {
+                            _logger.LogDebug("Descartados bytes de control sin '*': '{basura}'", visible);
+                        }
+                        else {
+                            _avisadoBytesControl = true;
+                            _logger.LogInformation("Descartados bytes de control sin '*': '{basura}'. Si se repiten, ya no se anotan.", visible);
+                        }
                     }
                     else {
-                        _logger.LogWarning("Descartados datos sin '*' de inicio de evento: '{basura}' (posible byte perdido en la línea serie).", troceo.Basura);
+                        _logger.LogWarning("Descartados datos sin '*' de inicio de evento: '{basura}' (posible byte perdido en la línea serie).", visible);
                     }
                 }
                 if (troceo.Eventos.Count > 1) {
@@ -226,13 +240,21 @@ namespace Gregal.Networking {
             }
         }
 
+        // *f# y *~...# sin partida en marcha: un MCB los repite dos veces por
+        // segundo mientras espera (unos 80 MB de log al día). Con una partida
+        // abierta sí se anotan: un *f# ahí significa que se perdió su *F#.
+        private bool EsEsperaEntrePartidas(TagEvent? evt) =>
+            evt is { Code: 'f' or '~' } && !_acumulador.HayPartidaEnCurso;
+
         // Solo trocea/acumula eventos; nunca espera a Firebird (eso lo hace
         // PersistLoopAsync, en paralelo) para no frenar la lectura serie si
         // llegan varias partidas seguidas.
         private async Task ProcessChannelAsync(CancellationToken ct) {
             await foreach (string rawFragment in _messageChannel.Reader.ReadAllAsync(ct)) {
                 try {
-                    if (_settings.CurrentValue.LogRawFrames) {
+                    var evt = TagEventParser.Parse(rawFragment);
+
+                    if (_settings.CurrentValue.LogRawFrames && !EsEsperaEntrePartidas(evt)) {
                         // Transcripción fiel de lo que emite el hardware, útil en un
                         // despliegue nuevo para confirmar el protocolo real antes de
                         // fiarse del mapeo asumido. Desactivable (TagProtocolSettings.
@@ -240,7 +262,6 @@ namespace Gregal.Networking {
                         _logger.LogInformation("Fragmento tag recibido: '{frag}'", rawFragment);
                     }
 
-                    var evt = TagEventParser.Parse(rawFragment);
                     if (evt == null) continue;
 
                     var dto = _acumulador.Feed(evt.Value);
