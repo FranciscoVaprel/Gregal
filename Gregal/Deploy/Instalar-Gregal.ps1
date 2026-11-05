@@ -341,11 +341,14 @@ if (-not $ServiceName) {
 }
 
 Write-Step "Base de datos Firebird"
-# La ruta actual si ese fichero existe (p. ej. C:\DatosCV\aamslog.FDB); si
-# no, la de la carpeta de Gregal, donde se copia la plantilla vacía.
+# La ruta actual si ese fichero existe; si no, la base de la sala
+# (C:\DatosCV\aamslog.FDB) si está; si tampoco, la de la carpeta de Gregal,
+# donde se copia la plantilla vacía.
 $DefaultDbPath = Join-Path $InstallDir "Data\GREGAL.FDB"
+$DbSala = "C:\DatosCV\aamslog.FDB"
 $dbActual = [regex]::Match($actual, '(?<="ConnectionString"\s*:\s*"[^"]*)Database=([^;"]*)').Groups[1].Value.Replace('\\', '\')
-if ($dbActual -and (Test-Path $dbActual)) { $DefaultDbPath = $dbActual }
+if ($dbActual -and (Test-Path $dbActual) -and $dbActual -ne $DefaultDbPath) { $DefaultDbPath = $dbActual }
+elseif (Test-Path $DbSala) { $DefaultDbPath = $DbSala }
 $DbPath = Read-WithDefault "Ruta completa del fichero .FDB de esta sala" $DefaultDbPath
 
 # Contraseña de SYSDBA: el appsettings.json publicado ya lleva la de las

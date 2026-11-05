@@ -65,7 +65,8 @@ ahora.
 **Instalación con el zip completo:** descomprímelo en la carpeta definitiva y
 haz doble clic en `Configurar.cmd`. Comprueba que
 Firebird responde, pregunta el puerto COM, el fabricante, la sala, la concesión
-(propone `999` en las salas MCB), la base de datos y la contraseña de SYSDBA, escribe `appsettings.json`, comprueba que Gregal puede usar
+(propone `999` en las salas MCB), la base de datos (propone
+`C:\DatosCV\aamslog.FDB` si existe y aún no hay otra configurada) y la contraseña de SYSDBA, escribe `appsettings.json`, comprueba que Gregal puede usar
 esa base de datos y registra el servicio (o, con `-AlIniciarSesion` o
 `-SinServicio`, deja Gregal en consola: ver más abajo). Si ya tienes un `appsettings.json` de esa sala,
 cópialo encima en lugar de ejecutar el script.

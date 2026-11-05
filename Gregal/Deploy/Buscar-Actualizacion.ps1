@@ -123,7 +123,11 @@ if ($enConsola.Count -gt 0) {
 
 Write-Step "Instalando la versión $ultima"
 $log = Join-Path $env:TEMP "Gregal-Setup-$ultima.log"
-$proceso = Start-Process $destino -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG=`"$log`"" -Wait -PassThru
+# Sin -Wait: en PowerShell 5.1 espera también al Gregal que abre el instalador,
+# y esta ventana se quedaría colgada hasta cerrar Gregal.
+$proceso = Start-Process $destino -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG=`"$log`"" -PassThru
+$null = $proceso.Handle   # sin esto ExitCode sale vacío
+$proceso.WaitForExit()
 Remove-Item $destino -ErrorAction SilentlyContinue
 if ($proceso.ExitCode -ne 0) {
     Write-Warn "El instalador ha terminado con error ($($proceso.ExitCode)). Detalle en $log"
