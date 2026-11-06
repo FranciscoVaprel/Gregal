@@ -55,6 +55,8 @@ OutputBaseFilename=Gregal-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\Gregal\Gregal.ico
+UninstallDisplayIcon={app}\Gregal.exe
 ; El servicio lo para PrepareToInstall. El Restart Manager queda para un
 ; Gregal abierto a mano (instalación sin servicio): ofrece cerrarlo.
 CloseApplications=yes

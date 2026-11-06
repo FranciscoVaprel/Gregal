@@ -6,6 +6,9 @@
     <Version>1.0.16</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Icono del exe (y de la ventana de consola y los accesos directos). Lo
+         dibuja Instalador\Iconos\Crear-Icono.ps1. -->
+    <ApplicationIcon>Gregal.ico</ApplicationIcon>
     <UserSecretsId>dotnet-Gregal-81bca07e-8973-4a5c-a54a-d10fd2c270fe</UserSecretsId>
   </PropertyGroup>
 
