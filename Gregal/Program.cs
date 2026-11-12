@@ -12,6 +12,16 @@ using System.IO.Ports;
 // de Windows como InfoSistema.DescribirRam().
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
 
+// Ayuda y versión: antes de leer la configuración, salen enseguida.
+if (Ayuda.PideAyuda(args)) {
+    Console.WriteLine(Ayuda.Texto);
+    return 0;
+}
+if (Ayuda.PideVersion(args)) {
+    Console.WriteLine($"Gregal {Ayuda.Version}");
+    return 0;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 // sc.exe create "GregalReceiverService" binPath= "C:\Deploy\Gregal\Gregal.exe"
 // start= auto displayname= "Gregal - Receptor de Bingo"

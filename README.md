@@ -78,6 +78,8 @@ para doble clic):
 
 | Orden | Qué hace |
 |---|---|
+| `Gregal.exe -h` (o `--help`, `/?`) | Lista estas órdenes y sale. |
+| `Gregal.exe --version` | Dice la versión instalada (con el commit) y sale. |
 | `Gregal.exe --comprobar-bd` | Dice si conecta con Firebird y si la tabla tiene todas las columnas que Gregal escribe. Lo usa «Configurar Gregal». |
 | `Gregal.exe --escuchar [COMx] [segundos]` (`Probar-COM.cmd`) | Abre el puerto de la máquina con los mismos parámetros que Gregal y enseña lo que llega, sin guardar nada. Para probar el cable: ver «Comprobar el puerto de la máquina». |
 | `Gregal.exe --reimportar-pendientes` (`Reimportar-Pendientes.cmd`) | Vuelve a guardar en Firebird las partidas de `logs\historico_pendientes_tag.jsonl`: ver «Si algo falla» en «Guardado en Firebird». |
