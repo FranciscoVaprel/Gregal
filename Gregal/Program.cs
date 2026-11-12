@@ -26,10 +26,15 @@ builder.Services.Configure<NetworkSettings>(builder.Configuration.GetSection("Ne
 builder.Services.Configure<DatabaseSettings>(builder.Configuration.GetSection("DatabaseSettings"));
 builder.Services.Configure<TagProtocolSettings>(builder.Configuration.GetSection("TagProtocolSettings"));
 
-// "Gregal.exe --comprobar-bd": solo comprueba la base de datos y sale (lo usa
-// Instalar-Gregal.ps1). No arranca receptores ni escribe log.
+// Órdenes de diagnóstico que no arrancan receptores ni escriben en el log:
+//   --comprobar-bd   comprueba la base de datos y sale (lo usa Instalar-Gregal.ps1).
+//   --escuchar       enseña lo que llega por el puerto COM, sin guardar nada (Probar-COM.cmd).
+// Más abajo, ya con el log: --reimportar-pendientes.
 if (args.Contains("--comprobar-bd", StringComparer.OrdinalIgnoreCase)) {
     Environment.Exit(ComprobacionBd.Ejecutar(builder.Configuration));
+}
+if (args.Contains("--escuchar", StringComparer.OrdinalIgnoreCase)) {
+    Environment.Exit(EscuchaPuerto.Ejecutar(builder.Configuration, args));
 }
 
 var generalSettings = builder.Configuration.GetSection("GeneralSettings").Get<GeneralSettings>()
@@ -81,8 +86,6 @@ string version = typeof(Program).Assembly
     .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
     .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
     .FirstOrDefault()?.InformationalVersion ?? "?";
-Log.Information("Gregal {version} arrancando ({modo}).", version,
-    WindowsServiceHelpers.IsWindowsService() ? "servicio de Windows" : "consola");
 
 // 4. Registro de Infraestructura de Datos y Motores de Parseo
 builder.Services.AddSingleton<JsonGregalParser>();
@@ -102,6 +105,29 @@ builder.Services.AddSingleton<PartidaAccumulator>();
 // solo el segundo está activo — es el receptor principal ahora mismo.
 var networkSettings = builder.Configuration.GetSection("NetworkSettings").Get<NetworkSettings>() ?? new NetworkSettings();
 var tagSettings = builder.Configuration.GetSection("TagProtocolSettings").Get<TagProtocolSettings>() ?? new TagProtocolSettings();
+
+// "Gregal.exe --reimportar-pendientes": vuelve a guardar en Firebird las
+// partidas del fichero de pendientes, con el mismo HistoricoRepository (y el
+// mismo log) que el servicio, y sale. Sin receptores: puede correr con Gregal
+// en marcha (Reimportar-Pendientes.cmd).
+if (args.Contains("--reimportar-pendientes", StringComparer.OrdinalIgnoreCase)) {
+    Log.Information("Gregal {version}: reimportando las partidas pendientes de {fichero}.", version, tagSettings.FallbackFileFullPath);
+    int codigo;
+    try {
+        using var hostReimportacion = builder.Build();
+        codigo = await ReimportacionPendientes.EjecutarAsync(
+            hostReimportacion.Services.GetRequiredService<HistoricoRepository>(), tagSettings.FallbackFileFullPath);
+    }
+    catch (Exception ex) {
+        Log.Fatal(ex, "La reimportación de pendientes se ha detenido por un error.");
+        codigo = 1;
+    }
+    Log.CloseAndFlush();
+    return codigo;
+}
+
+Log.Information("Gregal {version} arrancando ({modo}).", version,
+    WindowsServiceHelpers.IsWindowsService() ? "servicio de Windows" : "consola");
 
 if (networkSettings.Enabled) {
     builder.Services.AddHostedService<TcpGregalReceiver>();
@@ -128,6 +154,7 @@ catch (Exception ex) {
 finally {
     Log.CloseAndFlush();
 }
+return Environment.ExitCode;
 
 // Solo tiene sentido si alguien está mirando una consola real; como servicio
 // de Windows (sc.exe/services.msc) no hay consola que lo muestre, y

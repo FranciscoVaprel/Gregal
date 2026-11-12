@@ -45,7 +45,16 @@ EN EL ESCRITORIO QUEDAN
                       lo que ya hay: Intro deja cada cosa como está.
 
 Lo mismo está en la carpeta de Gregal (C:\Gregal): Actualizar.cmd y
-Configurar.cmd.
+Configurar.cmd. Y en esa carpeta hay dos más, para cuando algo no va:
+  Probar-COM.cmd      Enseña lo que llega por el cable de la máquina, sin
+                      guardar nada. Antes cierra la ventana de Gregal (o
+                      para el servicio). Si el cable está bien, salen
+                      líneas con *f# enseguida; si no llega nada, lo dice.
+  Reimportar-Pendientes.cmd
+                      Si Firebird falló en algún momento, las partidas que
+                      no se pudieron guardar quedan en
+                      logs\historico_pendientes_tag.jsonl. Esto las vuelve
+                      a guardar. Se puede hacer con Gregal en marcha.
 
 
 ¿FUNCIONA?
@@ -61,6 +70,11 @@ PROBLEMAS FRECUENTES
   SYSDBA no es la de este Firebird. Configurar Gregal -> escribir la buena.
 - "Access to COMx denied": otro programa (u otro Gregal) tiene el puerto.
   Que solo haya uno: o servicio, o ventana.
+- No llegan partidas y no se sabe si es el cable: Probar-COM.cmd (con
+  Gregal cerrado). Si no sale nada, es el cable, el puerto o la máquina.
+- En el log sale "anexada a ... historico_pendientes_tag.jsonl": Firebird
+  no pudo guardar esa partida. Arregla Firebird (Configurar Gregal
+  comprueba la base de datos) y luego Reimportar-Pendientes.cmd.
 - La ventana de Gregal se queda parada: se ha hecho clic dentro (Windows
   congela la ventana al seleccionar texto). Pulsa Esc.
 - Gregal no se abre al encender: el PC no entró al escritorio, o se eligió

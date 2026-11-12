@@ -86,17 +86,25 @@ namespace Gregal.Networking {
 
             _config = _settings.CurrentValue;
 
-            _port = new SerialPort(_config.ComPort, _config.BaudRate) {
-                DataBits = _config.SerialDataBits,
-                Parity = _config.SerialParity,
-                StopBits = _config.SerialStopBits,
-                Handshake = _config.SerialHandshake,
-                RtsEnable = _config.SerialRtsEnable,
-                DtrEnable = _config.SerialDtrEnable,
-                ReadTimeout = _config.SerialReadTimeoutMs,
-                WriteTimeout = _config.SerialWriteTimeoutMs,
-                ReadBufferSize = _config.SerialReadBufferSize,
-                WriteBufferSize = _config.SerialWriteBufferSize,
+            _port = CrearPuerto(_config);
+            _port.DataReceived += OnDataReceived;
+        }
+
+        // El puerto tal como lo abre el receptor. También lo usa
+        // "Gregal.exe --escuchar" (EscuchaPuerto), para probar el cable con
+        // exactamente los mismos parámetros.
+        public static SerialPort CrearPuerto(TagProtocolSettings config, string? puerto = null) =>
+            new SerialPort(puerto ?? config.ComPort, config.BaudRate) {
+                DataBits = config.SerialDataBits,
+                Parity = config.SerialParity,
+                StopBits = config.SerialStopBits,
+                Handshake = config.SerialHandshake,
+                RtsEnable = config.SerialRtsEnable,
+                DtrEnable = config.SerialDtrEnable,
+                ReadTimeout = config.SerialReadTimeoutMs,
+                WriteTimeout = config.SerialWriteTimeoutMs,
+                ReadBufferSize = config.SerialReadBufferSize,
+                WriteBufferSize = config.SerialWriteBufferSize,
                 // Latin1 (no ASCII/UTF-8, el default de SerialPort es ASCII):
                 // mapea cada byte 0-255 a su mismo code point sin tocarlo. El
                 // evento 'e' (EstadoPartidaDecoder) es binario con todos sus
@@ -105,9 +113,6 @@ namespace Gregal.Networking {
                 // los datos antes de que lleguen a nuestro parser.
                 Encoding = System.Text.Encoding.Latin1
             };
-
-            _port.DataReceived += OnDataReceived;
-        }
 
         public Task StartAsync(CancellationToken cancellationToken) {
             _ = ListenAsync(cancellationToken);
@@ -303,10 +308,7 @@ namespace Gregal.Networking {
 
         private async Task GuardarEnFallbackAsync(HistoricoDTO dto, string motivo) {
             try {
-                string path = _settings.CurrentValue.FallbackFilePath;
-                string fullPath = Path.IsPathRooted(path)
-                    ? path
-                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+                string fullPath = _settings.CurrentValue.FallbackFileFullPath;
 
                 string? folder = Path.GetDirectoryName(fullPath);
                 if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder)) {

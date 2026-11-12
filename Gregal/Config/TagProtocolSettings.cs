@@ -40,6 +40,12 @@ public class TagProtocolSettings : ReglasProtocoloTag {
     // tarde. Ruta relativa al directorio del ejecutable.
     public string FallbackFilePath { get; set; } = "logs/historico_pendientes_tag.jsonl";
 
+    // FallbackFilePath como ruta absoluta (la relativa cuenta desde la carpeta
+    // de Gregal.exe, no desde el directorio actual).
+    public string FallbackFileFullPath => Path.GetFullPath(Path.IsPathRooted(FallbackFilePath)
+        ? FallbackFilePath
+        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FallbackFilePath));
+
     // Registra en el log (nivel Information) cada fragmento *CODIGO<valor>#
     // tal cual llega, antes de interpretarlo. Útil al desplegar por primera
     // vez en una sala para confirmar qué emite realmente el hardware; se

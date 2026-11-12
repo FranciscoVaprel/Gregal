@@ -37,8 +37,9 @@ trae tres ficheros:
 
 **En la sala, todo con doble clic.** No hace falta escribir comandos: el
 instalador deja en el escritorio **«Actualizar Gregal»** y **«Configurar
-Gregal»** (y la carpeta de Gregal tiene `Actualizar.cmd`, `Configurar.cmd` y
-`LEEME.txt`, la guía rápida de una página). Los `.ps1` sueltos no se pueden
+Gregal»** (y la carpeta de Gregal tiene `Actualizar.cmd`, `Configurar.cmd`,
+`Probar-COM.cmd`, `Reimportar-Pendientes.cmd` y `LEEME.txt`, la guía rápida de
+una página). Los `.ps1` sueltos no se pueden
 ejecutar con `.\script.ps1` en un Windows normal (bloqueo de scripts): usa los
 accesos directos o los `.cmd`, que lo saltan.
 
@@ -71,10 +72,20 @@ esa base de datos y registra el servicio (o, con `-AlIniciarSesion` o
 `-SinServicio`, deja Gregal en consola: ver más abajo). Si ya tienes un `appsettings.json` de esa sala,
 cópialo encima en lugar de ejecutar el script.
 
-**Comprobar la base de datos en cualquier momento:** desde la carpeta de
-Gregal, `.\Gregal.exe --comprobar-bd`. Con la configuración de
-`appsettings.json`, dice si conecta con Firebird y si la tabla tiene todas las
-columnas que Gregal escribe.
+**Órdenes de `Gregal.exe`** (desde la carpeta de Gregal, con la configuración
+de `appsettings.json`; a partir de la 1.0.18 las dos últimas tienen su `.cmd`
+para doble clic):
+
+| Orden | Qué hace |
+|---|---|
+| `Gregal.exe --comprobar-bd` | Dice si conecta con Firebird y si la tabla tiene todas las columnas que Gregal escribe. Lo usa «Configurar Gregal». |
+| `Gregal.exe --escuchar [COMx] [segundos]` (`Probar-COM.cmd`) | Abre el puerto de la máquina con los mismos parámetros que Gregal y enseña lo que llega, sin guardar nada. Para probar el cable: ver «Comprobar el puerto de la máquina». |
+| `Gregal.exe --reimportar-pendientes` (`Reimportar-Pendientes.cmd`) | Vuelve a guardar en Firebird las partidas de `logs\historico_pendientes_tag.jsonl`: ver «Si algo falla» en «Guardado en Firebird». |
+
+Cualquier valor de `appsettings.json` se puede cambiar solo para esa ejecución
+con `--Seccion:Clave=valor`, por ejemplo
+`Gregal.exe --TagProtocolSettings:ComPort=COM3` para probar otro puerto sin
+tocar el fichero.
 
 **Actualización a mano:** para Gregal, copia encima el contenido del zip de
 actualización y vuelve a arrancarlo. `Actualizar-Gregal.ps1` (incluido en los
@@ -123,17 +134,18 @@ la ventana o apagar el PC.
 
 ### Comprobar el puerto de la máquina
 
-Con Gregal parado, este script escucha 3 segundos en cada puerto. La máquina
-manda `*f#` cada segundo entre partidas, así que el puerto bueno es el que
-recibe eso:
+Con Gregal parado (cerrada su ventana o parado el servicio: el puerto solo lo
+puede abrir un programa), doble clic en `Probar-COM.cmd` en la carpeta de
+Gregal. Abre el puerto de `appsettings.json` y va enseñando lo que llega, con
+la hora y los bytes de control como `\xNN`, hasta pulsar Esc. La máquina
+manda `*f#` dos veces por segundo entre partidas, así que si el cable y el
+puerto están bien se ve enseguida; al terminar resume cuántos bytes y qué
+eventos han llegado, y si no llega nada lo dice y sugiere los otros puertos
+del PC. Para probar otro puerto o limitar el tiempo:
+`Gregal.exe --escuchar COM3 10` (10 segundos en COM3).
 
-```powershell
-foreach ($p in [System.IO.Ports.SerialPort]::GetPortNames()) {
-    $sp = New-Object System.IO.Ports.SerialPort $p, 9600, 'None', 8, 'One'
-    try { $sp.Open(); Start-Sleep 3; $d = $sp.ReadExisting(); $sp.Close(); "{0}: {1} bytes  {2}" -f $p, $d.Length, ($d -replace '[^\x20-\x7E]', '.') }
-    catch { "{0}: no se puede abrir ({1})" -f $p, $_.Exception.Message }
-}
-```
+Si llegan datos pero no con la forma `*CODIGO<valor>#`, lo normal es que la
+velocidad no sea la de la máquina (`TagProtocolSettings:BaudRate`).
 
 ## Configuración (`appsettings.json`)
 
@@ -217,7 +229,12 @@ Para cada partida:
 5. **Si algo falla** (no conecta, error de SQL...): *rollback*, el error queda
    en el log y la partida se añade en JSON a
    `logs/historico_pendientes_tag.jsonl` para no perderla. No hay reintento
-   automático: esas partidas se recuperan a mano.
+   automático: cuando Firebird vuelva a funcionar, doble clic en
+   `Reimportar-Pendientes.cmd` (`Gregal.exe --reimportar-pendientes`, a partir
+   de la 1.0.18; se puede con Gregal en marcha). Guarda las que pueda y las
+   quita del fichero; las que Firebird vuelva a rechazar, y las líneas que no
+   se entiendan, se quedan en él para otro intento, con el motivo en el log de
+   Gregal.
 
 Cada transacción dura unos milisegundos y solo hay una por partida, así que
 Gregal puede compartir la base de datos con el software de la sala sin
