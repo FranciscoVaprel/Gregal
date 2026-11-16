@@ -128,7 +128,7 @@ namespace Gregal.Networking {
 
         public async Task ListenAsync(CancellationToken ct) {
             try {
-                _port!.Open();
+                await AbrirPuertoAsync(ct);
                 _logger.LogInformation("Puerto serie (protocolo tag) abierto: {port} a {baud} baudios.", _config.ComPort, _config.BaudRate);
 
                 await ProcessChannelAsync(ct);
@@ -141,6 +141,40 @@ namespace Gregal.Networking {
             }
             finally {
                 Stop();
+            }
+        }
+
+        private static readonly TimeSpan EsperaReintentoPuerto = TimeSpan.FromSeconds(10);
+
+        // Hasta la 1.0.19, si el puerto no se podía abrir Gregal anotaba el
+        // error y se quedaba abierto sin recibir nada: una consola con pinta
+        // de estar funcionando (salas, 2026-11-10/11, con Gregal arrancado dos
+        // veces). Ahora sigue intentándolo: el puerto puede estar ocupado por
+        // otro programa o no existir aún (adaptador USB que tarda en aparecer
+        // tras dar la luz). Un nombre de puerto mal escrito (ArgumentException)
+        // no se arregla reintentando: sale por el catch general.
+        private async Task AbrirPuertoAsync(CancellationToken ct) {
+            for (int intento = 1; ; intento++) {
+                try {
+                    _port!.Open();
+                    if (intento > 1)
+                        _logger.LogInformation("El puerto {port} ya se ha podido abrir (intento {intento}).", _config.ComPort, intento);
+                    return;
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) {
+                    string motivo = ex is UnauthorizedAccessException
+                        ? "ocupado por otro programa"
+                        : "no existe o no responde";
+                    // Sin la traza: en la consola la lee gente no técnica, y el
+                    // motivo ya va en el mensaje.
+                    if (intento == 1)
+                        _logger.LogError("NO SE RECIBEN PARTIDAS: no se puede abrir el puerto serie {port} ({motivo}: {detalle}). Se reintenta cada {segundos} s.",
+                            _config.ComPort, motivo, ex.Message, (int)EsperaReintentoPuerto.TotalSeconds);
+                    else if (intento % 30 == 0)
+                        _logger.LogError("NO SE RECIBEN PARTIDAS: el puerto serie {port} sigue sin poder abrirse ({motivo}; {intento} intentos).",
+                            _config.ComPort, motivo, intento);
+                    await Task.Delay(EsperaReintentoPuerto, ct);
+                }
             }
         }
 

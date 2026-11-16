@@ -3,6 +3,7 @@ using Gregal.Data;
 using Gregal.Diagnostics;
 using Gregal.Networking;
 using Gregal.Parsing;
+using Gregal.Utils;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Serilog;
 using System.IO.Ports;
@@ -134,6 +135,16 @@ if (args.Contains("--reimportar-pendientes", StringComparer.OrdinalIgnoreCase)) 
     }
     Log.CloseAndFlush();
     return codigo;
+}
+
+// Un solo Gregal recibiendo por PC (ver UnicaInstancia): el segundo avisa y
+// sale con código 3, sin abrir puertos. El mutex vive hasta el final.
+using var unicaInstancia = UnicaInstancia.Intentar();
+if (unicaInstancia == null) {
+    Log.Warning("Gregal {version} no arranca: ya hay otro Gregal funcionando en este PC.", version);
+    Log.CloseAndFlush();
+    if (!WindowsServiceHelpers.IsWindowsService()) UnicaInstancia.AvisarEnConsola();
+    return 3;
 }
 
 Log.Information("Gregal {version} arrancando ({modo}).", version,

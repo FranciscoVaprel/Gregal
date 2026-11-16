@@ -68,8 +68,13 @@ PROBLEMAS FRECUENTES
 --------------------
 - No guarda partidas / error de usuario y contraseña: la contraseña de
   SYSDBA no es la de este Firebird. Configurar Gregal -> escribir la buena.
-- "Access to COMx denied": otro programa (u otro Gregal) tiene el puerto.
-  Que solo haya uno: o servicio, o ventana.
+- "NO SE RECIBEN PARTIDAS: no se puede abrir el puerto serie": otro
+  programa tiene el puerto, o el puerto no existe. Gregal lo reintenta
+  solo cada 10 segundos; en cuanto se libera, sale "Puerto serie ...
+  abierto" y sigue normal.
+- "GREGAL YA ESTÁ FUNCIONANDO": se ha abierto Gregal otra vez. Esa ventana
+  se cierra sola; la buena es la otra. Si pasa cada día al encender, hay
+  dos accesos directos de Gregal en Inicio: quita uno.
 - No llegan partidas y no se sabe si es el cable: Probar-COM.cmd (con
   Gregal cerrado). Si no sale nada, es el cable, el puerto o la máquina.
 - En el log sale "anexada a ... historico_pendientes_tag.jsonl": Firebird

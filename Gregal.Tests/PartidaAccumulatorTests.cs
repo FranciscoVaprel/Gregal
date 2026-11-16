@@ -622,6 +622,95 @@ public class PartidaAccumulatorTests {
         Assert.Null(acumulador.Feed(EventoDe("*f#"))); // los siguientes *f# no hacen nada
     }
 
+    // Revisión de bolas de las salas (logs 2026-11-10/15): con el bombo entre
+    // partidas, una bola y su *f#, otra y su *f#..., a veces varias seguidas.
+    private static void FeedRevisionDeBolas(PartidaAccumulator acumulador, params int[][] tramos) {
+        foreach (var tramo in tramos) {
+            foreach (int bola in tramo) Assert.Null(acumulador.Feed(EventoDe($"*E{bola}#")));
+            Assert.Null(acumulador.Feed(EventoDe("*f#")));
+        }
+    }
+
+    [Fact]
+    public void Feed_RevisionDeBolasAntesDeLaPrimera_SeDescartaSinAvisosYNoEntraEnLaPartida() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(logger: logger);
+
+        FeedRevisionDeBolas(acumulador, [56], [66], [38, 61, 3], [64]);
+        Assert.False(acumulador.HayPartidaEnCurso);
+
+        Assert.Null(acumulador.Feed(EventoDe("*T1#")));
+        acumulador.Feed(EventoDe("*E7#"));
+        var partida = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal(1, partida!.PartidaDia);
+        Assert.Equal("7", partida.Bolas);
+        Assert.Empty(logger.Warnings);
+    }
+
+    [Fact]
+    public void Feed_BolasSueltasJustoAntesDeLaT_NoEntranEnLaPartida() {
+        var acumulador = CreateAccumulatorSinT();
+
+        acumulador.Feed(EventoDe("*E73#"));        // sin *f# antes de la T
+        Assert.Null(acumulador.Feed(EventoDe("*T1#")));
+        acumulador.Feed(EventoDe("*E7#"));
+        var partida = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal("7", partida!.Bolas);
+    }
+
+    [Fact]
+    public void Feed_RevisionDeBolasAMitadDeSesion_NoMachacaLaPartidaAnterior() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(logger: logger);
+
+        acumulador.Feed(EventoDe("*T30#"));
+        acumulador.Feed(EventoDe("*E5#"));
+        Assert.Equal(30, acumulador.Feed(EventoDe("*F#"))!.PartidaDia);
+        acumulador.Feed(EventoDe("*f#"));
+
+        FeedRevisionDeBolas(acumulador, [12], [44]);
+
+        // Antes se guardaba la última bola suelta como partida 30.
+        Assert.Null(acumulador.Feed(EventoDe("*T31#")));
+        Assert.Empty(logger.Warnings);
+    }
+
+    [Fact]
+    public void Feed_PartidaSinTCuyoNumeroYaLlegoConSuT_SeDescartaConAviso() {
+        var logger = new RecordingLogger<PartidaAccumulator>();
+        var acumulador = CreateAccumulatorSinT(logger: logger);
+
+        acumulador.Feed(EventoDe("*T5#"));
+        acumulador.Feed(EventoDe("*E9#"));
+        Assert.Equal(5, acumulador.Feed(EventoDe("*F#"))!.PartidaDia);
+
+        // Bolas sin T cerradas con *F#: se esperaría guardarlas como T-1 = 5.
+        acumulador.Feed(EventoDe("*E10#"));
+        Assert.Null(acumulador.Feed(EventoDe("*F#")));
+
+        Assert.Null(acumulador.Feed(EventoDe("*T6#")));
+        Assert.Contains(logger.Warnings, w => w.Contains("ya llegó entera") && w.Contains('5'));
+    }
+
+    [Fact]
+    public void Feed_PartidaConLaTPerdida_SeSigueGuardandoComoLaAnterior() {
+        var acumulador = CreateAccumulatorSinT();
+
+        acumulador.Feed(EventoDe("*T4#"));
+        acumulador.Feed(EventoDe("*E9#"));
+        acumulador.Feed(EventoDe("*F#"));
+
+        // La partida 5 llega sin su *T# (perdida por el camino).
+        acumulador.Feed(EventoDe("*E10#"));
+        Assert.Null(acumulador.Feed(EventoDe("*F#")));
+
+        var recuperada = acumulador.Feed(EventoDe("*T6#"));
+        Assert.Equal(5, recuperada!.PartidaDia);
+        Assert.Equal("10", recuperada.Bolas);
+    }
+
     // Construye el payload binario del evento 'e' (sin "última bola") con las
     // bolas indicadas marcadas como salidas, igual que EstadoPartidaDecoderTests.
     private static string ConstruirPayloadEstadoPartida(IEnumerable<int> bolas) {

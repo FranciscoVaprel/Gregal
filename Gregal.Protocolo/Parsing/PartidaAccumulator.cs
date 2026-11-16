@@ -129,6 +129,23 @@ public class PartidaAccumulator {
     // partida y se guarda como la anterior (T-1). No se reinicia en Reset().
     private HistoricoDTO? _pendienteSinT;
 
+    // Número de la última *T# recibida desde que existe el acumulador (desde
+    // que arrancó Gregal). Si la partida sin T pendiente se fuera a guardar
+    // con ese mismo número, machacaría una partida que sí llegó entera: se
+    // descarta (ver ResolverPendienteSinT).
+    private int? _ultimaT;
+
+    // Bolas sueltas con el bombo entre partidas: llegan *E# sin *T# y las
+    // cierra un *f#, no un *F#. Es la revisión de bolas que hacen las salas
+    // al abrir y al cerrar la sesión (las 90 bolas, una cada pocos segundos,
+    // logs de 2026-11-10 a 2026-11-15). No son partidas: se descartan al
+    // momento y se anota un resumen al empezar la siguiente partida, en vez
+    // de tres avisos por bola.
+    private int _sueltasTramos;
+    private int _sueltasBolas;
+    private DateTime _sueltasDesde;
+    private DateTime _sueltasHasta;
+
     // reloj: en el servicio, la hora local del PC; en los tests, una hora fija;
     // al reproducir un log, la hora de cada línea. settings: Gregal pasa su
     // IOptionsMonitor<TagProtocolSettings> (IOptionsMonitor es covariante).
@@ -145,10 +162,17 @@ public class PartidaAccumulator {
             // *f# solo llega entre partidas (comprobado en las 11 partidas de
             // la captura MCB: ninguno entre una T y su F). Si llega con una
             // partida abierta, su *F# se perdió por el camino.
+            case 'f' when TieneContenido && _dto.PartidaDia == 0:
+                DescartarSueltas();
+                return null;
             case 'f' when TieneContenido:
                 _logger.LogWarning("Llega *f# (entre partidas) con una partida abierta: se perdió su *F#. Se cierra la partida.");
                 return CerrarPartida();
             case 'T': {
+                // Bolas sin T ni cierre justo antes de una T: restos de la
+                // revisión de bolas, no el principio de esta partida.
+                if (TieneContenido && _dto.PartidaDia == 0) DescartarSueltas();
+                ResumirSueltas();
                 var pendiente = ResolverPendienteSinT(evt.Value);
                 Aplicar(evt);
                 return pendiente;
@@ -200,6 +224,10 @@ public class PartidaAccumulator {
         _pendienteSinT = null;
 
         if (int.TryParse(valorT, SoloDigitos, CultureInfo.InvariantCulture, out int siguiente) && siguiente > 1) {
+            if (_ultimaT == siguiente - 1) {
+                _logger.LogWarning("Se descarta la partida sin T (bolas {bolas}): la partida {anterior} ya llegó entera, con su T; no se sobrescribe.", pendiente.Bolas, siguiente - 1);
+                return null;
+            }
             pendiente.PartidaDia = siguiente - 1;
             _logger.LogInformation("Partida sin T guardada como partida {partida} (la siguiente llegó con T{siguiente}).", pendiente.PartidaDia, siguiente);
             return pendiente;
@@ -209,6 +237,27 @@ public class PartidaAccumulator {
         // hay forma de saber qué número tenía.
         _logger.LogWarning("Se descarta la partida sin T (bolas {bolas}): la siguiente T ('{t}') no permite deducir su número.", pendiente.Bolas, valorT);
         return null;
+    }
+
+    private void DescartarSueltas() {
+        DateTime ahora = _reloj.GetLocalNow().DateTime;
+        if (_sueltasTramos == 0) {
+            _sueltasDesde = ahora;
+            _logger.LogInformation("Llegan bolas sueltas con el bombo parado entre partidas (sin *T#): parece una revisión de bolas. No se guardan; al empezar la siguiente partida se anota un resumen.");
+        }
+        _sueltasTramos++;
+        _sueltasBolas += _bolasOrden.Count;
+        _sueltasHasta = ahora;
+        _logger.LogDebug("Bolas sueltas entre partidas descartadas: {bolas}.", string.Join(",", _bolasOrden));
+        Reset();
+    }
+
+    private void ResumirSueltas() {
+        if (_sueltasTramos == 0) return;
+        _logger.LogInformation("Revisión de bolas de {desde:HH:mm:ss} a {hasta:HH:mm:ss}: {bolas} bolas sueltas entre partidas, no guardadas.",
+            _sueltasDesde, _sueltasHasta, _sueltasBolas);
+        _sueltasTramos = 0;
+        _sueltasBolas = 0;
     }
 
     private void Aplicar(TagEvent evt) {
@@ -224,6 +273,7 @@ public class PartidaAccumulator {
                 break;
             case 'T': {
                 _dto.PartidaDia = ParseInt(evt.Code, evt.Value);
+                if (_dto.PartidaDia > 0) _ultimaT = _dto.PartidaDia;
                 // T marca el inicio de la partida: FECHA (TIMESTAMP) lleva la
                 // fecha y hora de ese momento, y HORA_VENTA/HORA_CIERRE (TIME)
                 // solo la hora. Una partida sin T (captura empezada a mitad)
