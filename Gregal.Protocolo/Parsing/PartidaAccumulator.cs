@@ -671,11 +671,14 @@ public class PartidaAccumulator {
         _dto.CodSala = settings.DefaultCodSala;
         _dto.CodConc = settings.DefaultCodConc;
 
-        // FechaSesion: el protocolo no la lleva; se asume la fecha del momento
-        // de cerrar la partida (la del reloj: al reproducir un log, la del log).
+        // FechaSesion: el protocolo no la lleva. Es el día de sesión (las
+        // sesiones acaban a las 07:00, ver SesionBingo) del inicio de la
+        // partida (su T), o del cierre si no llegó la T. La hora sale del
+        // reloj: al reproducir un log, la del log.
         DateTime cierre = _reloj.GetLocalNow().DateTime;
         if (string.IsNullOrWhiteSpace(_dto.FechaSesion)) {
-            _dto.FechaSesion = cierre.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            _dto.FechaSesion = SesionBingo.FechaDe(_dto.Fecha ?? cierre, settings.HoraCambioSesion)
+                .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
 
         // HORA_FIN: la hora de cierre de la partida (*F#, o el *f# que la

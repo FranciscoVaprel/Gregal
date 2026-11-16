@@ -68,7 +68,7 @@ public static class FilaHistorico {
             N(reclamacion), N(bolas),
             dto.BolaLinea ?? 0, dto.NumLineas ?? 0, N(dto.HoraLinea), N(dto.CartLinea),
             dto.BolaBingo ?? 0, dto.NumBingos ?? 0, N(dto.HoraBingo), N(dto.CartBingo),
-            EnteroOCero(dto.FechaSesionMes),
+            MesDeSesion(dto),
         };
         for (int i = 0; i < 99; i++) {
             valores.Add(dto.Premios != null && dto.Premios.Length > i ? dto.Premios[i] ?? 0m : 0m);
@@ -88,6 +88,18 @@ public static class FilaHistorico {
     // el DTO (así los trae el protocolo JSON): vacío -> 0; si no, tal cual.
     public static object EnteroOCero(string? valor) =>
         string.IsNullOrWhiteSpace(valor) ? 0 : valor;
+
+    // FECHA_SESION_MES: el mes (1-12) de FECHA_SESION, como lo rellenaba
+    // siempre el sistema anterior a Gregal (comprobado en las 50.295 filas de
+    // aamslog.FDB, 2026-11-16; la sesión del 31/01 jugada hasta las 03:54 del
+    // 01/02 tiene mes 1). Hasta la 1.0.20 Gregal lo dejaba a 0. Si el DTO lo
+    // trae (protocolo JSON/CSV), se respeta.
+    public static object MesDeSesion(HistoricoDTO dto) {
+        if (!string.IsNullOrWhiteSpace(dto.FechaSesionMes)) return dto.FechaSesionMes;
+        return DateTime.TryParseExact(dto.FechaSesion, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fecha)
+            ? fecha.Month
+            : 0;
+    }
 
     // Si "bolas" (lista separada por comas) no cabe en maxLongitud, se queda
     // con las primeras bolas enteras que quepan y antepone NotaBolasRecortadas

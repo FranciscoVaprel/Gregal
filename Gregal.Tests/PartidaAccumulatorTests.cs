@@ -448,7 +448,54 @@ public class PartidaAccumulatorTests {
     public void Feed_AsumeFechaSesionDeHoy() {
         var dto = FeedEjemplo(CreateAccumulator());
 
-        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), dto.FechaSesion);
+        Assert.Equal(SesionBingo.FechaDe(DateTime.Now).ToString("yyyy-MM-dd"), dto.FechaSesion);
+    }
+
+    // Las sesiones acaban a las 07:00: lo jugado de madrugada es de la sesión
+    // del día anterior (salas, 2026-11-15: partidas 67-71 de 00:04 a 00:30).
+    [Theory]
+    [InlineData("2026-11-15 00:30:00", "2026-11-15 00:36:00", "2026-11-14")]
+    [InlineData("2026-11-15 06:58:00", "2026-11-15 07:03:00", "2026-11-14")] // manda la T
+    [InlineData("2026-11-15 07:00:00", "2026-11-15 07:05:00", "2026-11-15")]
+    [InlineData("2026-11-15 17:08:00", "2026-11-15 17:14:00", "2026-11-15")]
+    [InlineData("2026-11-15 23:58:00", "2026-11-16 00:04:00", "2026-11-15")]
+    public void Feed_FechaSesion_SeCambiaALas7DeLaManana(string inicioT, string cierreF, string esperada) {
+        var reloj = new RelojFijo(DateTime.Parse(inicioT, System.Globalization.CultureInfo.InvariantCulture));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
+
+        acumulador.Feed(EventoDe("*T67#"));
+        acumulador.Feed(EventoDe("*E5#"));
+        reloj.Hora = DateTime.Parse(cierreF, System.Globalization.CultureInfo.InvariantCulture);
+        var dto = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.Equal(esperada, dto!.FechaSesion);
+        Assert.Equal(DateTime.Parse(inicioT, System.Globalization.CultureInfo.InvariantCulture), dto.Fecha); // FECHA no cambia
+    }
+
+    [Fact]
+    public void Feed_PartidaSinTDeMadrugada_UsaElCierreParaLaSesion() {
+        var reloj = new RelojFijo(new DateTime(2026, 11, 15, 0, 20, 0));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings()), reloj);
+
+        acumulador.Feed(EventoDe("*E5#"));
+        acumulador.Feed(EventoDe("*F#"));
+        var recuperada = acumulador.Feed(EventoDe("*T8#"));
+
+        Assert.Equal("2026-11-14", recuperada!.FechaSesion);
+    }
+
+    [Fact]
+    public void Feed_ConHoraCambioSesionConfigurada_LaRespeta() {
+        var reloj = new RelojFijo(new DateTime(2026, 11, 15, 0, 30, 0));
+        var acumulador = new PartidaAccumulator(NullLogger<PartidaAccumulator>.Instance,
+            new FakeMonitor<TagProtocolSettings>(new TagProtocolSettings { HoraCambioSesion = TimeSpan.Zero }), reloj);
+
+        acumulador.Feed(EventoDe("*T1#"));
+        acumulador.Feed(EventoDe("*E5#"));
+
+        Assert.Equal("2026-11-15", acumulador.Feed(EventoDe("*F#"))!.FechaSesion);
     }
 
     [Fact]

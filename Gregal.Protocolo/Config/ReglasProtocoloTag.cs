@@ -44,6 +44,11 @@ public class ReglasProtocoloTag {
     // no guardar que inventar una clave de upsert ambigua).
     public int DefaultCodSala { get; set; } = 0;
     public int DefaultCodConc { get; set; } = 0;
+
+    // Hora a la que acaba la sesión y empieza la del día siguiente (ver
+    // SesionBingo). Por defecto 07:00; en appsettings.json,
+    // "TagProtocolSettings": { "HoraCambioSesion": "07:00" }.
+    public TimeSpan HoraCambioSesion { get; set; } = SesionBingo.HoraCambioPorDefecto;
 }
 
 public enum Fabricante {
