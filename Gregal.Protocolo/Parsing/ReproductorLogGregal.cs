@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Gregal.Parsing;
 
-// Reconstruye las partidas de un log de Gregal (logs\gregal<AAAAMMDD>.log)
+// Reconstruye las partidas de un log de Gregal (logs\gregal-sesion<AAAAMMDD>.log; antes de la 1.0.22, gregal<AAAAMMDD>.log)
 // volviendo a pasar por PartidaAccumulator, uno a uno, los eventos que Gregal
 // dejó anotados como "Fragmento tag recibido: '<evento>'" (solo están si
 // TagProtocolSettings.LogRawFrames estaba activo). Lo usa BingoHistoricoEditor

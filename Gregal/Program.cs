@@ -60,18 +60,18 @@ if (!string.IsNullOrEmpty(logsFolder) && !Directory.Exists(logsFolder)) {
 }
 
 // 3. Inicialización de Serilog
+// Un fichero por sesión de bingo, no por día de calendario (1.0.22):
+// gregal-sesion<AAAAMMDD>.log va de la hora de cambio de sesión (07:00) a la
+// del día siguiente, como FECHA_SESION. Tope de disco: 50 MB por fichero (si
+// una sesión llega a más, sigue en ..._001.log) y se borran los de más de 60
+// días, unos 3 GB como mucho.
+var horaCambioSesion = (builder.Configuration.GetSection("TagProtocolSettings").Get<TagProtocolSettings>()
+                        ?? new TagProtocolSettings()).HoraCambioSesion;
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.File(
-        path: finalLogPath,
-        rollingInterval: RollingInterval.Day,
-        // Tope de disco: ficheros de 50 MB como mucho (si un día llega a más,
-        // sigue en gregal<fecha>_001.log...) y solo los 60 últimos, unos 3 GB.
-        fileSizeLimitBytes: 50 * 1024 * 1024,
-        rollOnFileSizeLimit: true,
-        retainedFileCountLimit: 60,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.Sink(new LogPorSesion(finalLogPath, horaCambioSesion,
+        "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}"))
     .CreateLogger();
 
 builder.Logging.ClearProviders();
@@ -224,7 +224,7 @@ static void MostrarBannerDeArranque(IConfiguration configuration) {
                            $"Serie={network.ComPort}{(puertoDetectado ? "" : " <- NO detectado en este PC")}");
     }
 
-    Console.WriteLine($" Logs: {logsFolder}");
+    Console.WriteLine($" Logs: {logsFolder} (un fichero por sesión, de {tag.HoraCambioSesion:hh\\:mm} a {tag.HoraCambioSesion:hh\\:mm})");
     Console.WriteLine(new string('=', 78));
     Console.WriteLine();
 }

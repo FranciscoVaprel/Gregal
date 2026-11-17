@@ -256,10 +256,15 @@ pon `MaxLongitudBolas` a 300. En las partidas reales capturadas salieron entre
 
 ## Logs y diagnóstico
 
-Los logs están en la carpeta `logs` junto a `Gregal.exe`, un fichero por día
-(`gregal<AAAAMMDD>.log`). Cada fichero llega como mucho a 50 MB: si un día da
-para más, sigue en `gregal<AAAAMMDD>_001.log`, `_002`... Se conservan los 60
-últimos ficheros (unos 3 GB como mucho).
+Los logs están en la carpeta `logs` junto a `Gregal.exe`, un fichero por
+sesión de bingo (`gregal-sesion<AAAAMMDD>.log`, desde la 1.0.22): como
+`FECHA_SESION`, la sesión va de las 07:00 a las 06:59 del día siguiente
+(`TagProtocolSettings:HoraCambioSesion`), así que lo jugado de madrugada está
+en el log de la sesión, no en el del día siguiente. Las versiones anteriores
+hacían un fichero por día de calendario (`gregal<AAAAMMDD>.log`). Cada fichero
+llega como mucho a 50 MB: si una sesión da para más, sigue en
+`gregal-sesion<AAAAMMDD>_001.log`, `_002`... Al arrancar se borran los logs de
+más de 60 días (unos 3 GB como mucho).
 
 - La primera línea de cada arranque indica la versión y el modo:
   `Gregal 1.0.3+23cea73... arrancando (servicio de Windows)`.
