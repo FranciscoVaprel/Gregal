@@ -50,6 +50,17 @@ namespace Gregal.Networking {
         private readonly object _stopLock = new();
         private bool _detenido;
 
+        // System.IO.Ports lanza DataReceived desde el pool de hilos: dos
+        // llamadas pueden solaparse y, sin este candado, mezclar o perder bytes
+        // de _accumulator.
+        private readonly object _lecturaLock = new();
+
+        // El token de StartAsync no se cancela al parar el host: este sí, en
+        // Stop(), para cortar los reintentos de abrir el puerto.
+        private readonly CancellationTokenSource _parada = new();
+        private Task _escucha = Task.CompletedTask;
+        private Task _persistencia = Task.CompletedTask;
+
         // Tras abrir el puerto (o limpiar el buffer por desbordamiento) lo
         // primero que llega puede ser la cola de un evento ya empezado. Esa
         // cola nunca empieza por '*' y TagEventParser.Trocear la devuelve como
@@ -115,15 +126,25 @@ namespace Gregal.Networking {
             };
 
         public Task StartAsync(CancellationToken cancellationToken) {
-            _ = ListenAsync(cancellationToken);
-            _ = PersistLoopAsync(cancellationToken);
+            _escucha = ListenAsync(_parada.Token);
+            _persistencia = PersistLoopAsync();
             return Task.CompletedTask;
         }
 
-        public Task StopAsync(CancellationToken cancellationToken) {
+        // Parada ordenada: se deja de leer el puerto, se procesan los eventos
+        // que ya estaban en cola y se espera a que se guarden las partidas
+        // terminadas (o vayan al fichero de pendientes). Antes se cerraban los
+        // dos canales a la vez y una partida recién terminada se podía perder
+        // sin dejar rastro. Si el host corta la espera, se avisa.
+        public async Task StopAsync(CancellationToken cancellationToken) {
             Stop();
-            _logger.LogInformation("Receptor serie (protocolo tag) detenido de manera ordenada.");
-            return Task.CompletedTask;
+            try {
+                await Task.WhenAll(_escucha, _persistencia).WaitAsync(cancellationToken);
+                _logger.LogInformation("Receptor serie (protocolo tag) detenido de manera ordenada.");
+            }
+            catch (OperationCanceledException) {
+                _logger.LogWarning("Receptor serie (protocolo tag) detenido sin terminar de guardar las partidas pendientes (el cierre no esperó más).");
+            }
         }
 
         public async Task ListenAsync(CancellationToken ct) {
@@ -131,7 +152,7 @@ namespace Gregal.Networking {
                 await AbrirPuertoAsync(ct);
                 _logger.LogInformation("Puerto serie (protocolo tag) abierto: {port} a {baud} baudios.", _config.ComPort, _config.BaudRate);
 
-                await ProcessChannelAsync(ct);
+                await ProcessChannelAsync();
             }
             catch (OperationCanceledException) {
                 _logger.LogInformation("Receptor serie (protocolo tag) detenido.");
@@ -141,6 +162,9 @@ namespace Gregal.Networking {
             }
             finally {
                 Stop();
+                // Ya no llegarán más partidas: PersistLoopAsync termina en
+                // cuanto guarde las que queden.
+                _persistChannel.Writer.TryComplete();
             }
         }
 
@@ -155,6 +179,7 @@ namespace Gregal.Networking {
         // no se arregla reintentando: sale por el catch general.
         private async Task AbrirPuertoAsync(CancellationToken ct) {
             for (int intento = 1; ; intento++) {
+                ct.ThrowIfCancellationRequested(); // Stop() ya ha cerrado el puerto
                 try {
                     _port!.Open();
                     if (intento > 1)
@@ -183,8 +208,10 @@ namespace Gregal.Networking {
                 if (_detenido) return;
                 _detenido = true;
 
+                // Solo el primer canal: ProcessChannelAsync acaba con lo que ya
+                // tenía en cola y ListenAsync cierra el segundo al terminar.
                 _messageChannel.Writer.TryComplete();
-                _persistChannel.Writer.TryComplete();
+                _parada.Cancel();
 
                 if (_port == null) return;
 
@@ -211,19 +238,22 @@ namespace Gregal.Networking {
         }
 
         private void OnDataReceived(object sender, SerialDataReceivedEventArgs e) {
-            if (_port == null || !_port.IsOpen) return;
-            try {
-                string incoming = _port.ReadExisting();
-                if (string.IsNullOrEmpty(incoming)) return;
+            lock (_lecturaLock) {
+                var port = _port;
+                if (port == null || !port.IsOpen) return;
+                try {
+                    string incoming = port.ReadExisting();
+                    if (string.IsNullOrEmpty(incoming)) return;
 
-                _accumulator += incoming;
+                    _accumulator += incoming;
 
-                if (BufferExcedido()) return;
+                    if (BufferExcedido()) return;
 
-                ExtractAndEnqueueMessages();
-            }
-            catch (Exception ex) {
-                _logger.LogError(ex, "Error leyendo del puerto serie (protocolo tag).");
+                    ExtractAndEnqueueMessages();
+                }
+                catch (Exception ex) {
+                    _logger.LogError(ex, "Error leyendo del puerto serie (protocolo tag).");
+                }
             }
         }
 
@@ -288,8 +318,10 @@ namespace Gregal.Networking {
         // Solo trocea/acumula eventos; nunca espera a Firebird (eso lo hace
         // PersistLoopAsync, en paralelo) para no frenar la lectura serie si
         // llegan varias partidas seguidas.
-        private async Task ProcessChannelAsync(CancellationToken ct) {
-            await foreach (string rawFragment in _messageChannel.Reader.ReadAllAsync(ct)) {
+        // Sin token: termina cuando Stop() completa el canal, después de
+        // procesar lo que ya estaba en cola.
+        private async Task ProcessChannelAsync() {
+            await foreach (string rawFragment in _messageChannel.Reader.ReadAllAsync()) {
                 try {
                     var evt = TagEventParser.Parse(rawFragment);
 
@@ -325,8 +357,8 @@ namespace Gregal.Networking {
         // memoria) sin bloquear ProcessChannelAsync. Si el guardado falla, la
         // partida se anexa a TagProtocolSettings.FallbackFilePath en vez de
         // perderse.
-        private async Task PersistLoopAsync(CancellationToken ct) {
-            await foreach (HistoricoDTO dto in _persistChannel.Reader.ReadAllAsync(ct)) {
+        private async Task PersistLoopAsync() {
+            await foreach (HistoricoDTO dto in _persistChannel.Reader.ReadAllAsync()) {
                 try {
                     bool ok = await _repo.SaveHistoricoAsync(dto);
                     if (!ok) {

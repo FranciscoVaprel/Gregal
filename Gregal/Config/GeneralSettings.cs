@@ -1,9 +1,7 @@
 ﻿namespace Gregal.Config {
     public class GeneralSettings {
-        public string LogPath { get; set; } = "logs/gregal.log";
-        public bool EnableAutoRefresh { get; set; }
-        public string CsvSeparator { get; set; } = ";";
+        // Relativo a la carpeta logs junto a Gregal.exe (Program.cs ya añade
+        // "logs"): de aquí salen el prefijo y la extensión de los ficheros.
+        public string LogPath { get; set; } = "gregal.log";
     }
-
-    
 }

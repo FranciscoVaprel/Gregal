@@ -51,11 +51,6 @@ public class CsvGregalParser : IParser {
         }
     }
 
-    // Método auxiliar para limpiar el código y loguear el error exacto
-    //private HistoricoDTO? LogFormatError(string campo, string valor) {
-    //    _logger.LogWarning("X ERROR DE FORMATO: El campo {campo} debe ser numérico. Recibido: '{valor}'", campo, valor);
-    //    return null;
-    //}
 
     private decimal GetDecimal(string[] cols, int index) {
         if (index >= cols.Length || string.IsNullOrWhiteSpace(cols[index])) return 0m;

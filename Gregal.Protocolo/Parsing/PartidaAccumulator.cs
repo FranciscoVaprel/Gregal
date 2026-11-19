@@ -50,6 +50,7 @@ public class PartidaAccumulator {
     // divide entre 10^decimales en Finalizar.
     private const int BolaPlus = 101;
     private const int IndicePremioBolaPlus = 16;
+    private const int MaxDecimales = 6;
 
     private HistoricoDTO _dto = new();
 
@@ -292,6 +293,13 @@ public class PartidaAccumulator {
                 // encaja con el campo ya existente HistoricoDTO.NumDecimales,
                 // hasta ahora sin usar).
                 _dto.NumDecimales = ParseInt(evt.Code, evt.Value);
+                // Ruido en la línea: con 29 decimales o más, 10^K ya no cabe en
+                // un decimal y Finalizar() reventaba antes de vaciar la partida,
+                // que se mezclaba con la siguiente. Ninguna moneda usa más de 4.
+                if (_dto.NumDecimales > MaxDecimales) {
+                    _logger.LogWarning("Número de decimales imposible (*K{valor}#): se ignora y se asumen 2.", evt.Value);
+                    _dto.NumDecimales = null;
+                }
                 break;
             case 'P':
                 // Primer cartón vendido. Confirmado: *P2051# == ticket

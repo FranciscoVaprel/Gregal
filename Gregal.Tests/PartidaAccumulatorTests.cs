@@ -300,6 +300,31 @@ public class PartidaAccumulatorTests {
     }
 
     [Fact]
+    public void Feed_ConDecimalesImposiblesPorRuido_AsumeDosYNoContaminaLaSiguiente() {
+        // *K99# hacía desbordar 10^K en Finalizar() antes de vaciar la partida:
+        // la siguiente heredaba sus bolas.
+        var acumulador = CreateAccumulator();
+
+        acumulador.Feed(EventoDe("*T1#"));
+        acumulador.Feed(EventoDe("*K99#"));
+        acumulador.Feed(EventoDe("*C200#"));
+        acumulador.Feed(EventoDe("*E5#"));
+        var primera = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(primera);
+        Assert.Null(primera!.NumDecimales); // como sin K: FilaHistorico guarda 2
+        Assert.Equal(2.00m, primera.Precio);
+
+        acumulador.Feed(EventoDe("*T2#"));
+        acumulador.Feed(EventoDe("*E7#"));
+        var segunda = acumulador.Feed(EventoDe("*F#"));
+
+        Assert.NotNull(segunda);
+        Assert.Equal(2, segunda!.PartidaDia);
+        Assert.Equal("7", segunda.Bolas);
+    }
+
+    [Fact]
     public void Feed_ConCamposConfirmadosPorTicketsReales_LosMapeaCorrectamente() {
         // Reproduce la cabecera real de la partida 1 de "7 partidas Metronia"
         // (sin empalme de serie), cruzada contra el ticket impreso por la
